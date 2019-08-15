@@ -35,11 +35,11 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "test"
+command = "train"
 
 # Dataset settings
 num_images = 97200
-sample_iter = 30
+sample_iter = 1
 test_ratio = 0.1
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
@@ -50,10 +50,13 @@ part_name = "fl"
 num_classes = 1
 
 # Batch size for training (change depending on how much memory you have)
-batch_size = 32
+batch_size = 4
 
 # Number of epochs to train for
-num_epochs = 20
+num_epochs = 2
+
+# Ratio for door loss
+door_ratio = 0.5
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
@@ -65,12 +68,14 @@ data_range = -60
 # Dir settings
 data_dir = 'datasets/shapenet_car_data/'
 train_seg_dir = 'datasets/shapenet_car_seg/'
+train_dict_dir = 'seg_dict/shapenet_train_seg.npy'
 test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
 test_seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
-model_dir = 'params/sigmoid/{}_ft_{}.pkl'.format(model_name, part_name)
-plot_dir = 'plots/sigmoid/{}_ft_{}.jpg'.format(model_name, part_name)
-output_dir = 'outputs/sigmoid/{}_ft_{}.txt'.format(model_name, part_name)
-html_dir = "htmls/sigmoid/{}_ft_{}.txt".format(model_name, part_name)
+test_dict_dir = 'seg_dict/shapenet_test_{}_seg.npy'.format(part_name)
+model_dir = 'params/location/{}_ft_{}.pkl'.format(model_name, part_name)
+plot_dir = 'plots/location/{}_ft_{}_same.jpg'.format(model_name, part_name)
+output_dir = 'outputs/location/{}_ft_{}_same.txt'.format(model_name, part_name)
+html_dir = "htmls/location/{}_ft_{}_same.txt".format(model_name, part_name)
 
 
 print("-------------------------------------")
@@ -78,8 +83,14 @@ print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{
 print("-------------------------------------\n")
 
 x_list = []
-train_list = []
-val_list = []
+train_total = []
+val_total = []
+train_mae = []
+val_mae = []
+train_door = []
+val_door = []
+train_pos = []
+val_pos = []
 
 def output_test(file, html, names, result):
     for i in range(len(names)):
@@ -98,6 +109,8 @@ def test_model(model, dataloaders, criterion):
     file = open(output_dir,'w')
     html = open(html_dir,'w')
     
+    running_loss_door = 0.0
+    running_loss_pos = 0.0
     running_loss = 0
     running_dist = 0
     for names, inputs, labels in dataloaders:
@@ -107,20 +120,26 @@ def test_model(model, dataloaders, criterion):
         model.eval()
         
         outputs = model(inputs)
-        loss = criterion(outputs, labels)
+        loss_door = criterion(outputs[:,0], labels[:,0])
+        loss_pos = criterion(outputs[:,1:], labels[:,1:])
+        loss = door_ratio*loss_door.item() + (1-door_ratio)*loss_pos.item()
         dist = mean_absolute_error(outputs.cpu().detach().numpy()[0], labels.cpu().detach().numpy()[0])
         
+        running_loss_door += loss_door.item() * inputs.size(0)
+        running_loss_pos += loss_pos.item() * inputs.size(0)
         running_loss += loss.item() * inputs.size(0)
         running_dist += dist.item() * inputs.size(0)
         
         output_test(file, html, names, outputs.cpu().detach().numpy()[0])
-        
+    
+    loss_door = running_loss_door / len(dataloaders.dataset)
+    loss_pos = running_loss_pos / len(dataloaders.dataset)
     loss = running_loss / len(dataloaders.dataset)
     dist = running_dist / len(dataloaders.dataset)
     file.close()
     html.close()
     
-    return loss, dist
+    return loss, dist, loss_door, loss_pos
         
 
 def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_inception=False):
@@ -143,6 +162,8 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             else:
                 model.eval()   # Set model to evaluate mode
 
+            running_loss_door = 0.0
+            running_loss_pos = 0.0
             running_loss = 0.0
             running_dist = 0.0
 
@@ -169,7 +190,9 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                         loss = loss1 + 0.4*loss2
                     else:
                         outputs = model(inputs)
-                        loss = criterion(outputs, labels)
+                        loss_door = criterion(outputs[:,0], labels[:,0])
+                        loss_pos = criterion(outputs[:,1:], labels[:,1:])
+                        loss = door_ratio*loss_door.item() + (1-door_ratio)*loss_pos.item()
                         dist = mean_absolute_error(outputs.cpu().detach().numpy()[0], labels.cpu().detach().numpy()[0])
 
                     # backward + optimize only if in training phase
@@ -178,19 +201,29 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                         optimizer.step()
 
                 # statistics
-                running_loss += loss.item() * inputs.size(0)
+                running_loss_door += loss_door.item() * inputs.size(0)
+                running_loss_pos += loss_pos.item() * inputs.size(0)
+                running_loss += loss * inputs.size(0)
                 running_dist += dist.item() * inputs.size(0)
 
+            epoch_loss_door = running_loss_door / len(dataloaders[phase].dataset)
+            epoch_loss_pos = running_loss_pos / len(dataloaders[phase].dataset)
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
             epoch_dist = running_dist / len(dataloaders[phase].dataset)
 
-            print('{} Loss: {:.4f}, Dist: {:.4f}'.format(phase, epoch_loss, epoch_dist*abs(data_range)))
+            print('{} Loss: {:.4f}, Dist: {:.4f}, Door loss: {:.4f}, Position loss: {:.4f}'.format(phase, epoch_loss, epoch_dist*abs(data_range), epoch_loss_door, epoch_loss_pos))
             
             # plot
             if phase == 'train':
-                train_list.append(epoch_dist*60)
+                train_total.append(epoch_loss)
+                train_mae.append(epoch_dist*60)
+                train_door.append(epoch_loss_door)
+                train_pos.append(epoch_loss_pos)
             else:
-                val_list.append(epoch_dist*60)
+                val_total.append(epoch_loss)
+                val_mae.append(epoch_dist*60)
+                val_door.append(epoch_loss_door)
+                val_pos.append(epoch_loss_pos)
 
             # deep copy the model
             if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
@@ -239,21 +272,21 @@ def get_locat(mask):
             left = min(left, search[0][0])
             right = max(right, search[-1][0])
             
-    print(left, right, top, bottom)
+    # print(left, right, top, bottom)
     if top!=None and bottom!=None:
         return (left+right)//2, (top+bottom)//2
     else:
         return None, None
 
-def read_seg_dict(path):
-    if not os.path.isfile(path):
-        save_dict(part_name, seg_dir, path)
-    seg_mask_dict = np.load(path).item()
+def read_seg_dict(seg_dir, dict_path):
+    if not os.path.isfile(dict_path):
+        save_dict(part_name, seg_dir, dict_path)
+    seg_mask_dict = np.load(dict_path).item()
 
     return seg_mask_dict
 
-def load_data(dir, seg_dir, mode):
-    seg_mask_dict = read_seg_dict(seg_dir)
+def load_data(dir, seg_dir, dict_path, mode):
+    seg_mask_dict = read_seg_dict(seg_dir, dict_path)
     name_data = []
     mask_data = []
     x_data = []
@@ -304,13 +337,13 @@ def transform_dataset(dataset, data_transforms):
     return dataset
     
 class myDataset(torch.utils.data.Dataset):
-    def __init__(self, dataSource, segSource, mode):
+    def __init__(self, dataSource, segSource, dict_path, mode):
         # Just normalization for validation
         data_transforms = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ])
-        names, xs, ys = load_data(dataSource, segSource, mode)
+        names, xs, ys = load_data(dataSource, segSource, dict_path, mode)
         self.names = names
         self.imgs = transform_dataset(xs, data_transforms)
         self.labels = Variable(torch.FloatTensor(ys))
@@ -339,8 +372,8 @@ if command == "train":
     print("Initializing Datasets and Dataloaders...")
 
     # Create training and validation datasets
-    trainsets = myDataset(data_dir, train_seg_dir, 'train')
-    testsets = myDataset(test_dir, test_seg_dir, 'test')
+    trainsets = myDataset(data_dir, train_seg_dir, train_dict_dir, 'train')
+    testsets = myDataset(test_dir, test_seg_dir, test_dict_dir, 'test')
 
     image_datasets = {'train': trainsets, 'val': testsets}
 
@@ -357,17 +390,17 @@ if command == "train":
     #  that we have just initialized, i.e. the parameters with requires_grad
     #  is True.
     params_to_update = model_ft.parameters()
-    print("Params to learn:")
+    # print("Params to learn:")
     if feature_extract:
         params_to_update = []
         for name,param in model_ft.named_parameters():
             if param.requires_grad == True:
                 params_to_update.append(param)
-                print("\t",name)
+                # print("\t",name)
     else:
         for name,param in model_ft.named_parameters():
             if param.requires_grad == True:
-                print("\t",name)
+                # print("\t",name)
 
     # Observe that all parameters are being optimized
     optimizer_ft = optim.SGD(params_to_update, lr=0.001, momentum=0.9)
@@ -379,14 +412,29 @@ if command == "train":
 
     # plot
     # plt.title('vgg16_bn Feature Extract',fontsize='large',fontweight='bold')
-    plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
-    #plt.title('ResNet18 Feature Extract',fontsize='large', fontweight='bold')
-    # plt.title('ResNet18 Fine-tune',fontsize='large', fontweight='bold')
-    #plt.title('DenseNet121 Feature Extract',fontsize='large',fontweight='bold')
-    #plt.title('DenseNet121 Fine-tuning',fontsize='large',fontweight='bold')
-    plt.plot(x_list,train_list,"x-",label="train loss")
-    plt.plot(x_list,val_list,"+-",label="val loss")
+    # plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
+    # plt.title('ResNet18 Feature Extract',fontsize='large', fontweight='bold')
+    plt.title('ResNet18 Fine-tune',fontsize='large', fontweight='bold')
+    plt.subplot(221)
+    plt.title("Total MSE loss")
+    plt.plot(x_list,train_total,"x-",label="train loss")
+    plt.plot(x_list,val_total,"+-",label="val loss")
     plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
+    plt.subplot(222)
+    plt.title("Door MAE loss")
+    plt.plot(x_list,train_mae,"x-",label="train loss")
+    plt.plot(x_list,val_mae,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
+    plt.subplot(223)
+    plt.title("Door MSE loss")
+    plt.plot(x_list,train_door,"x-",label="train loss")
+    plt.plot(x_list,val_door,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
+    plt.title("Position MSE loss")
+    plt.plot(x_list,train_pos,"x-",label="train loss")
+    plt.plot(x_list,val_pos,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
+
     plt.savefig(plot_dir)
 
 # Test
@@ -401,10 +449,12 @@ if command == "test":
 
     model_ft.eval()
 
-    testsets = myDataset(test_dir, test_seg_dir, 'test')
+    testsets = myDataset(test_dir, test_seg_dir, test_dict_dir, 'test')
 
 # Build testset
 testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=4)
-test_loss, test_dist = test_model(model_ft, testloader_dict, criterion)
-print("test mse: ", test_loss)
-print("test mae: ", test_dist*abs(data_range))
+test_loss, test_dist, test_door, test_pos = test_model(model_ft, testloader_dict, criterion)
+print("total test mse: ", test_loss)
+print("test door mae: ", test_dist*abs(data_range))
+print("test door mse: ", test_door)
+print("test position mse: ", test_pos)

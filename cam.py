@@ -71,10 +71,10 @@ thresh = 0.2
 # none_dir = 'focus_names/test/none.txt'
 
 
-def read_seg_dict(path):
-    if not os.path.isfile(path):
-        save_dict(part_name, seg_dir, path)
-    seg_mask_dict = np.load(path).item()
+def read_seg_dict(seg_dir, dict_path):
+    if not os.path.isfile(dict_path):
+        save_dict(part_name, seg_dir, dict_path)
+    seg_mask_dict = np.load(dict_path).item()
 
     return seg_mask_dict
 
@@ -117,7 +117,7 @@ net.eval()
 print("Load predictions...")
 pred_dict = load_pred(pred_dir)
 print("Load seg masks...")
-seg_mask_dict = read_seg_dict(seg_dict_dir)
+seg_mask_dict = read_seg_dict(seg_dir, seg_dict_dir)
 
 # data init
 focus_loss = 0

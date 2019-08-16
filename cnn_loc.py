@@ -39,7 +39,7 @@ command = "train"
 
 # Dataset settings
 num_images = 97200
-sample_iter = 1
+sample_iter = 30
 test_ratio = 0.1
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
@@ -47,13 +47,13 @@ model_name = "resnet"
 part_name = "fl"
 
 # Number of classes in the dataset
-num_classes = 1
+num_classes = 1+3
 
 # Batch size for training (change depending on how much memory you have)
-batch_size = 4
+batch_size = 64
 
 # Number of epochs to train for
-num_epochs = 2
+num_epochs = 20
 
 # Ratio for door loss
 door_ratio = 0.5
@@ -66,45 +66,53 @@ feature_extract = False
 data_range = -60
 
 # Dir settings
-data_dir = 'datasets/shapenet_car_data/'
-train_seg_dir = 'datasets/shapenet_car_seg/'
-train_dict_dir = 'seg_dict/shapenet_train_seg.npy'
+## Train
+train_dir = 'datasets/shapenet_car_data/'
 train_gt_dir = 'gt_dict/shapenet_car_gt.npy'.format(part_name)
+## Test
 test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
-test_seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
-test_dict_dir = 'seg_dict/shapenet_test_{}_seg.npy'.format(part_name)
 test_gt_dir = 'gt_dict/shapenet_test_{}_gt.npy'.format(part_name)
-
+## Model
 model_dir = 'params/location/{}_ft_{}.pkl'.format(model_name, part_name)
-plot_dir = 'plots/location/{}_ft_{}_same.jpg'.format(model_name, part_name)
+plot_dir = 'plots/location/'
 output_dir = 'outputs/location/{}_ft_{}_same.txt'.format(model_name, part_name)
 html_dir = "htmls/location/{}_ft_{}_same.txt".format(model_name, part_name)
 
 
 print("-------------------------------------")
-print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}".format(model_name, num_classes+2, batch_size, num_epochs, data_dir, test_dir))
+print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}".format(model_name, num_classes, batch_size, num_epochs, train_dir, test_dir))
 print("-------------------------------------\n")
 
 x_list = []
 train_total = []
 val_total = []
-train_mae = []
-val_mae = []
+train_bin = []
+val_bin = []
 train_door = []
 val_door = []
 train_pos = []
 val_pos = []
+train_door_mae = []
+val_door_mae = []
+train_pos_mae = []
+val_pos_mae = []
 
-def output_test(file, html, names, result):
+def delete_false(outputs):
+    for item in outputs:
+        if item[0] == False:
+            outputs.remove(item)
+    return outputs
+
+def output_test(file, html, names, labels, outputs):
     for i in range(len(names)):
         # visualize txt
         type_gt, fl_gt, fr_gt, bl_gt, br_gt, trunk_gt, az_gt, el_gt, dist_gt = names[i].split('_')
-        # content  = "gt: [ {} {} {} {} {} {} {}]---predictitmutmuxons: [".format(fl_gt, fr_gt, bl_gt, br_gt, trunk_gt, az_gt, el_gt)
-        content  = "name: {}---gt: [ {}]---predictions: [".format(names[i], fl_gt)
-        content += ' '+str(int(round(result[i][0]*data_range)))
+        content  = "name: {}---gt: [ {}, {}, {}, {}]---predictions: [".format(names[i], bool(labels[i][0]), int(labels[i][1]*data_range), \
+                                                                            int(labels[i][2]*640), int(labels[i][3]*480))
+        content += '{:.2f}, {}, {}, {}'.format(outputs[i][0], int(round(outputs[i][1]*data_range)), int(round(outputs[i][2]*640)), int(round(labels[i][3]*480)))
         content += "]\n"
         file.write(content)
-        html.write("{} gt:{} pred:{}\n".format(names[i], fl_gt, str(int(round(result[i][0]*data_range)))))
+        html.write("{} gt:{} pred:{}\n".format(names[i], fl_gt, str(int(round(outputs[i][1]*data_range)))))
 
     
 def test_model(model, dataloaders, criterion):
@@ -112,10 +120,7 @@ def test_model(model, dataloaders, criterion):
     file = open(output_dir,'w')
     html = open(html_dir,'w')
     
-    running_loss_door = 0.0
-    running_loss_pos = 0.0
-    running_loss = 0
-    running_dist = 0
+    running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0}
     for names, inputs, labels in dataloaders:
         inputs = inputs.to(device)
         labels = labels.to(device)
@@ -123,26 +128,34 @@ def test_model(model, dataloaders, criterion):
         model.eval()
         
         outputs = model(inputs)
-        loss_door = criterion(outputs[:,0], labels[:,0])
-        loss_pos = criterion(outputs[:,1:], labels[:,1:])
-        loss = door_ratio*loss_door.item() + (1-door_ratio)*loss_pos.item()
-        dist = mean_absolute_error(outputs.cpu().detach().numpy()[0], labels.cpu().detach().numpy()[0])
+        loss_bin = criterion(outputs[:,0], labels[:,0])
+        outputs = delete_false(outputs)
+        loss_door = criterion(outputs[:,1], labels[:,1])
+        loss_pos = criterion(outputs[:,2:], labels[:,2:])
+        loss = 0.2*loss_bin + 0.4*loss_door + 0.4*loss_pos
+        dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
+        dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
+                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*480, labels.cpu().detach().numpy()[:,2]*480)
         
-        running_loss_door += loss_door.item() * inputs.size(0)
-        running_loss_pos += loss_pos.item() * inputs.size(0)
-        running_loss += loss.item() * inputs.size(0)
-        running_dist += dist.item() * inputs.size(0)
+        running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
+        running_loss["door_mse"] += loss_door.item() * outputs.size(0)
+        running_loss["pos_mse"] += loss_pos.item() * outputs.size(0)
+        running_loss["total_mse"] += loss.item() * outputs.size(0)
+        running_loss["door_mae"] += dist_door.item() * outputs.size(0)
+        running_loss["pos_mae"] += dist_pos.item() * outputs.size(0)
         
-        output_test(file, html, names, outputs.cpu().detach().numpy()[0])
+        output_test(file, html, names, labels.cpu().detach().numpy(), outputs.cpu().detach().numpy())
     
-    loss_door = running_loss_door / len(dataloaders.dataset)
-    loss_pos = running_loss_pos / len(dataloaders.dataset)
-    loss = running_loss / len(dataloaders.dataset)
-    dist = running_dist / len(dataloaders.dataset)
+    loss_bin = running_loss["bin_mse"] / len(dataloaders.dataset)
+    loss_door = running_loss["door_mse"] / len(dataloaders.dataset)
+    loss_pos = running_loss["pos_mse"] / len(dataloaders.dataset)
+    loss = running_loss["total_mse"] / len(dataloaders.dataset)
+    dist_door = running_loss["door_mae"] / len(dataloaders.dataset)
+    dist_pos = running_loss["pos_mae"] / len(dataloaders.dataset)
     file.close()
     html.close()
     
-    return loss, dist, loss_door, loss_pos
+    return loss, loss_door, loss_pos, loss_bin, dist_door, dist_pos
         
 
 def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_inception=False):
@@ -151,6 +164,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
     val_acc_history = []
 
     best_model_wts = copy.deepcopy(model.state_dict())
+    print("Start training...")
 
     for epoch in tqdm(range(num_epochs)):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
@@ -165,11 +179,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             else:
                 model.eval()   # Set model to evaluate mode
 
-            running_loss_door = 0.0
-            running_loss_pos = 0.0
-            running_loss = 0.0
-            running_dist = 0.0
-
+            running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0}
             # Iterate over data.
             for i, (name, inputs, labels) in enumerate(dataloaders[phase]):
                 inputs = inputs.to(device)
@@ -181,22 +191,15 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
-                    # Get model outputs and calculate loss
-                    # Special case for inception because in training it has an auxiliary output. In train
-                    #   mode we calculate the loss by summing the final output and the auxiliary output
-                    #   but in testing we only consider the final output.
-                    if is_inception and phase == 'train':
-                        # From https://discuss.pytorch.org/t/how-to-optimize-inception-model-with-auxiliary-classifiers/7958
-                        outputs, aux_outputs = model(inputs)
-                        loss1 = criterion(outputs, labels)
-                        loss2 = criterion(aux_outputs, labels)
-                        loss = loss1 + 0.4*loss2
-                    else:
-                        outputs = model(inputs)
-                        loss_door = criterion(outputs[:,0], labels[:,0])
-                        loss_pos = criterion(outputs[:,1:], labels[:,1:])
-                        loss = door_ratio*loss_door.item() + (1-door_ratio)*loss_pos.item()
-                        dist = mean_absolute_error(outputs.cpu().detach().numpy()[0], labels.cpu().detach().numpy()[0])
+                    outputs = model(inputs)
+                    loss_bin = criterion(outputs[:,0], labels[:,0])
+                    outputs = delete_false(outputs)
+                    loss_door = criterion(outputs[:,1], labels[:,1])
+                    loss_pos = criterion(outputs[:,2:], labels[:,2:])
+                    loss = 0.2*loss_bin + 0.4*loss_door + 0.4*loss_pos
+                    dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
+                    dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
+                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*480, labels.cpu().detach().numpy()[:,2]*480)
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -204,29 +207,38 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                         optimizer.step()
 
                 # statistics
-                running_loss_door += loss_door.item() * inputs.size(0)
-                running_loss_pos += loss_pos.item() * inputs.size(0)
-                running_loss += loss * inputs.size(0)
-                running_dist += dist.item() * inputs.size(0)
+                running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
+                running_loss["door_mse"] += loss_door.item() * outputs.size(0)
+                running_loss["pos_mse"] += loss_pos.item() * outputs.size(0)
+                running_loss["total_mse"] += loss.item() * outputs.size(0)
+                running_loss["door_mae"] += dist_door.item() * outputs.size(0)
+                running_loss["pos_mae"] += dist_pos.item() * outputs.size(0)
 
-            epoch_loss_door = running_loss_door / len(dataloaders[phase].dataset)
-            epoch_loss_pos = running_loss_pos / len(dataloaders[phase].dataset)
-            epoch_loss = running_loss / len(dataloaders[phase].dataset)
-            epoch_dist = running_dist / len(dataloaders[phase].dataset)
+            epoch_loss_bin = running_loss["bin_mse"] / len(dataloaders[phase].dataset)
+            epoch_loss_door = running_loss["door_mse"] / len(dataloaders[phase].dataset)
+            epoch_loss_pos = running_loss["pos_mse"] / len(dataloaders[phase].dataset)
+            epoch_loss = running_loss["total_mse"] / len(dataloaders[phase].dataset)
+            epoch_dist_door = running_loss["door_mae"] / len(dataloaders[phase].dataset)
+            epoch_dist_pos = running_loss["pos_mae"] / len(dataloaders[phase].dataset)
 
-            print('{} Loss: {:.4f}, Dist: {:.4f}, Door loss: {:.4f}, Position loss: {:.4f}'.format(phase, epoch_loss, epoch_dist*abs(data_range), epoch_loss_door, epoch_loss_pos))
+            print('{} Total loss: {:.4f}, Bin loss: {:.4f}, Door loss: {:.4f}, Position loss: {:.4f}, Door dist: {:.4f}, Position dist: {:.4f}'.format(phase, \
+                epoch_loss, epoch_loss_bin, epoch_loss_door, epoch_loss_pos, epoch_dist_door*abs(data_range), epoch_dist_pos))
             
             # plot
             if phase == 'train':
                 train_total.append(epoch_loss)
-                train_mae.append(epoch_dist*60)
+                train_bin.append(epoch_loss_bin)
                 train_door.append(epoch_loss_door)
                 train_pos.append(epoch_loss_pos)
+                train_door_mae.append(epoch_dist_door*60)
+                train_pos_mae.append(epoch_dist_pos)
             else:
                 val_total.append(epoch_loss)
-                val_mae.append(epoch_dist*60)
+                val_bin.append(epoch_loss_bin)
                 val_door.append(epoch_loss_door)
                 val_pos.append(epoch_loss_pos)
+                val_door_mae.append(epoch_dist_door*60)
+                val_pos_mae.append(epoch_dist_pos)
 
             # deep copy the model
             if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
@@ -258,26 +270,28 @@ def sample_data():
     return str(fl_spl[0]), str(fr_spl[0]), str(bl_spl[0]), str(br_spl[0]), str(trunk_spl[0])
     
 class myDataset(torch.utils.data.Dataset):
-    def __init__(self, dataSource, segSource, dict_path, mode):
+    def __init__(self, dataSource, gtSource, mode):
         # Just normalization for validation
         self.dir_img = dataSource
-        self.names = self.load_names(dataSource)
-        self.gt_dict = self.load_gt(gtSource)
+        self.names = self.load_names(dataSource, mode)
+        self.gt_dict = np.load(gtSource).item()
+        print("{} data loaded: {} images".format(mode, len(self.names)))
 
     def __getitem__(self, index):
-        return self.names[index], load_image(self.dir_img+names[index]), load_gt(names[index])
+        return self.names[index], self.load_image(self.dir_img+self.names[index]+".png"), self.load_gt(self.names[index])
         
     def __len__(self):
-        return len(self.imgs)
+        return len(self.names)
     
     def load_names(self, dir, mode):
         name_data = []
         if mode == 'train':
             print("Start sampling...")
-            for i in range(sample_iter):
+            for i in tqdm(range(sample_iter)):
+                fl_spl, fr_spl, bl_spl, br_spl, trunk_spl = sample_data()
                 for file in os.listdir(dir):
                     if file[-3:] == "png":
-                        type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
+                        ins, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
                         if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl:
                             name_data.append(file[:-4])
         else:
@@ -293,12 +307,12 @@ class myDataset(torch.utils.data.Dataset):
             ])
         img = cv2.imread(dir)
         img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
-        return img
+        return data_transforms(img)
 
     def load_gt(self, name):
-        type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
-        bin, x, y = self.gt_dict(name)
-        return [bin, fl, x, y]
+        ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
+        bin, x, y = self.gt_dict[name]
+        return torch.FloatTensor([bin, int(fl)/data_range, x if x!= None else -1, y if x!= None else -1])
 
 
 # Detect if we have a GPU available
@@ -309,7 +323,7 @@ criterion = nn.MSELoss()
 
 if command == "train":
     # Initialize the model for this run
-    model_ft, input_size = initialize_model(model_name, num_classes+2, feature_extract, use_pretrained=True)
+    model_ft, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=True)
     model_ft = nn.DataParallel(model_ft)
 
 
@@ -319,8 +333,8 @@ if command == "train":
     print("Initializing Datasets and Dataloaders...")
 
     # Create training and validation datasets
-    trainsets = myDataset(data_dir, train_seg_dir, train_dict_dir, 'train')
-    testsets = myDataset(test_dir, test_seg_dir, test_dict_dir, 'test')
+    trainsets = myDataset(train_dir, train_gt_dir, 'train')
+    testsets = myDataset(test_dir, test_gt_dir, 'test')
 
     image_datasets = {'train': trainsets, 'val': testsets}
 
@@ -362,33 +376,59 @@ if command == "train":
     # plt.title('vgg16_bn Feature Extract',fontsize='large',fontweight='bold')
     # plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
     # plt.title('ResNet18 Feature Extract',fontsize='large', fontweight='bold')
-    plt.title('ResNet18 Fine-tune',fontsize='large', fontweight='bold')
+    # plt.title('ResNet18 Fine-tune',fontsize='middle', fontweight='bold')
     plt.subplot(221)
-    plt.title("Total MSE loss")
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Total MSE loss",fontsize=10)
     plt.plot(x_list,train_total,"x-",label="train loss")
     plt.plot(x_list,val_total,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
     plt.subplot(222)
-    plt.title("Door MAE loss")
-    plt.plot(x_list,train_mae,"x-",label="train loss")
-    plt.plot(x_list,val_mae,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Binary MSE loss",fontsize=10)
+    plt.plot(x_list,train_bin,"x-",label="train loss")
+    plt.plot(x_list,val_bin,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
     plt.subplot(223)
-    plt.title("Door MSE loss")
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Door MSE loss",fontsize=10)
     plt.plot(x_list,train_door,"x-",label="train loss")
     plt.plot(x_list,val_door,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
-    plt.title("Position MSE loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
+    plt.subplot(224)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Position MSE loss",fontsize=10)
     plt.plot(x_list,train_pos,"x-",label="train loss")
     plt.plot(x_list,val_pos,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
 
-    plt.savefig(plot_dir)
+    plt.savefig(plot_dir+"{}_ft_{}_mse.jpg".format(model_name, part_name))
+    
+    plt.subplot(121)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Door MAE loss",fontsize=10)
+    plt.plot(x_list,train_door_mae,"x-",label="train loss")
+    plt.plot(x_list,val_door_mae,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=7)
+    plt.subplot(122)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Position MAE loss",fontsize=10)
+    plt.plot(x_list,train_pos_mae,"x-",label="train loss")
+    plt.plot(x_list,val_pos_mae,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=7)
+
+    plt.savefig(plot_dir+"{}_ft_{}_mae.jpg".format(model_name, part_name))
 
 # Test
 # Load model
 if command == "test":
-    model_ft, input_size = initialize_model(model_name, num_classes+2, feature_extract, use_pretrained=False)
+    model_ft, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=False)
     model_ft.load_state_dict(torch.load(model_dir))
     model_ft = nn.DataParallel(model_ft)
     if isinstance(model_ft,torch.nn.DataParallel):
@@ -397,12 +437,14 @@ if command == "test":
 
     model_ft.eval()
 
-    testsets = myDataset(test_dir, test_seg_dir, test_dict_dir, 'test')
+    testsets = myDataset(test_dir, test_gt_dir, 'test')
 
 # Build testset
 testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=8)
-test_loss, test_dist, test_door, test_pos = test_model(model_ft, testloader_dict, criterion)
-print("total test mse: ", test_loss)
-print("test door mae: ", test_dist*abs(data_range))
-print("test door mse: ", test_door)
-print("test position mse: ", test_pos)
+test_loss, test_door, test_pos, test_bin, dist_door, dist_pos = test_model(model_ft, testloader_dict, criterion)
+print("Total test mse: ", test_loss)
+print("Test binary mse: ", test_bin)
+print("Test door mse: ", test_door)
+print("Test position mse: ", test_pos)
+print("Test door mae: ", dist_door*abs(data_range))
+print("Test position mae: ", dist_pos)

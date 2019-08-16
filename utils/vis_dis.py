@@ -6,16 +6,16 @@ from tqdm import tqdm
 from seg_dict_save import *
 
 # # Testing settings
-# seg_dir = "datasets/test_seg/"
-# seg_dict_dir = "seg_dict/test_seg.npy"
-# vis_save_dir = "vis_dis/test_vis.npy"
+# seg_dir = "../datasets/test_seg/"
+# seg_dict_dir = "../seg_dict/test_seg.npy"
+# vis_save_dir = "../vis_dis/test_vis.npy"
 
 
 # Configurations
 part_name = "fl"
-seg_dir = "datasets/shapenet_vis_dis/"
-seg_dict_dir = "seg_dict/vis_dis_fl_seg.npy"
-vis_save_dir = "vis_dis/vis_dis_fl.npy"
+seg_dir = "../datasets/shapenet_vis_dis/"
+seg_dict_dir = "../seg_dict/vis_dis_fl_seg.npy"
+vis_save_dir = "../vis_dis/vis_dis_fl.npy"
 
 vis_thresh = 4000
 vis_max = 60
@@ -30,14 +30,14 @@ def bin_vis_dis(vis_dict):
         else:
             vis_dict[view].append(False)
 
-def create_vis_dis(seg_mask_dictn, vis_save_dir):
+def create_vis_dis(seg_mask_dict, vis_save_dir):
     vis_dict = {}
     print("Calculating visible range...")
     for name, mask in tqdm(seg_mask_dict.items()):
         type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', name)
         view = "{}_{}".format(az, el)
         area = sum(sum(mask))
-        degree = abs(int(fl))+40
+        degree = abs(int(fl))
         # print(view, degree, area)
         if view not in vis_dict:
             vis_dict[view] = [0, vis_max]

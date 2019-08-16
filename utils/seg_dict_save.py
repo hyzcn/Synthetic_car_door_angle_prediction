@@ -4,12 +4,12 @@ import cv2
 from tqdm import tqdm
 
 # Test Settings
-# seg_dir = 'datasets/test_seg/'
-# save_dir = "seg_dict/test_seg.npy"
+# seg_dir = '../datasets/test_seg/'
+# save_dir = "../seg_dict/test_seg.npy"
 
 part_name = 'fl'
-seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
-save_dir = "seg_dict/shapenet_test_{}_seg.npy".format(part_name)
+seg_dir = '../datasets/shapenet_test_{}_seg/'.format(part_name)
+save_dir = "../seg_dict/shapenet_test_{}_seg.npy".format(part_name)
 
 
 color_dict = {'fl':[0,0,0], 'fr':[0,0,128], 'bl':[0,128,0], 'br':[0,128,128],

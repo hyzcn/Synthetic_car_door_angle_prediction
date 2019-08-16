@@ -24,14 +24,14 @@ from model import *
 ############### Configurations ###############
 # mode settings
 generate_cam = True
-cal_overlap = True
+cal_overlap = False
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
 model_name = "resnet"
 part_name = 'fl'
 
 # Number of classes in the dataset
-num_classes = 1
+num_classes = 1+3
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
@@ -43,12 +43,12 @@ seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
 seg_dict_dir = 'seg_dict/shapenet_test_{}_seg.npy'.format(part_name)
 
 # Model settings 
-param_dir = "params/sigmoid/{}_ft_{}.pkl".format(model_name, part_name)
-pred_dir = 'htmls/sigmoid/{}_ft_{}_same.txt'.format(model_name, part_name)
+param_dir = "params/location/{}_ft_{}.pkl".format(model_name, part_name)
+pred_dir = 'htmls/location/{}_ft_{}_same.txt'.format(model_name, part_name)
 
 # Save settings
-cam_dir = "cam_test/sigmoid/{}_ft_{}_same/".format(model_name, part_name)
-over_save_dir = 'overlaps/sigmoid/{}_ft_{}_same.csv'.format(model_name, part_name)
+cam_dir = "cam_test/location/{}_ft_{}_same/".format(model_name, part_name)
+over_save_dir = 'overlaps/location/{}_ft_{}_same.csv'.format(model_name, part_name)
 focus_dir = 'focus_names/{}_ft_{}_same/focus.txt'.format(model_name, part_name)
 unfocus_dir = 'focus_names/{}_ft_{}_same/unfocus.txt'.format(model_name, part_name)
 none_dir = 'focus_names/{}_ft_{}_same/none.txt'.format(model_name, part_name)
@@ -137,7 +137,8 @@ with open(over_save_dir,"w") as csvfile:
     over_file = csv.writer(csvfile)
     print("Start CAM...")
     over_file.writerow(["filename","fl","fr","bl","br","trunk","az","el","dist","overlap","l1 angle error"])
-    for file in tqdm(os.listdir(test_dir)):
+    bar = tqdm(os.listdir(test_dir))
+    for file in bar:
         if file[-3:] == "png":
         # hook the feature extractor
             features_blobs = []
@@ -147,7 +148,7 @@ with open(over_save_dir,"w") as csvfile:
 
             # get the softmax weight
             params = list(net.parameters())
-            weight_softmax = np.squeeze(params[-2].data.numpy()).reshape(1,512)
+            weight_softmax = np.squeeze(params[-2].data.numpy())
 
             def returnCAM(feature_conv, weight_softmax, class_idx):
                 # generate the class activation maps upsample to 256x256
@@ -187,9 +188,10 @@ with open(over_save_dir,"w") as csvfile:
             probs, idx = h_x.sort(0, True)
             probs = probs.numpy()
             idx = idx.numpy()
+            # bar.set_description("idx: {}, idx[0]: {}".format(idx, idx[0]))
 
             # generate class activation mapping for the top1 prediction
-            CAMs = returnCAM(features_blobs[0], weight_softmax, [idx])
+            CAMs = returnCAM(features_blobs[0], weight_softmax, [1])
 
             # render the CAM and output
             img = cv2.imread(test_dir+file)

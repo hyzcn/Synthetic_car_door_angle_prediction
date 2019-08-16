@@ -34,11 +34,11 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "test"
+command = "train"
 
 # Dataset settings
 num_images = 97200
-sample_iter = 30
+sample_iter = 1
 test_ratio = 0.1
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
@@ -52,7 +52,7 @@ num_classes = 1
 batch_size = 32
 
 # Number of epochs to train for
-num_epochs = 20
+num_epochs = 2
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
@@ -64,10 +64,10 @@ data_range = -60
 # Dir settings
 data_dir = 'datasets/shapenet_car_data/'
 test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
-model_dir = 'params/sigmoid/{}_ft_{}.pkl'.format(model_name, part_name)
-plot_dir = 'plots/sigmoid/{}_ft_{}.jpg'.format(model_name, part_name)
-output_dir = 'outputs/sigmoid/{}_ft_{}.txt'.format(model_name, part_name)
-html_dir = "htmls/sigmoid/{}_ft_{}.txt".format(model_name, part_name)
+model_dir = 'params/sigmoid/{}_ft_{}test.pkl'.format(model_name, part_name)
+plot_dir = 'plots/sigmoid/{}_ft_{}test.jpg'.format(model_name, part_name)
+output_dir = 'outputs/sigmoid/{}_ft_{}test.txt'.format(model_name, part_name)
+html_dir = "htmls/sigmoid/{}_ft_{}test.txt".format(model_name, part_name)
 
 print("-------------------------------------")
 print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}".format(model_name, num_classes, batch_size, num_epochs, data_dir, test_dir))
@@ -241,15 +241,15 @@ def load_data(dir, mode):
         test_id = random.sample(random_list, num_test_images)
         n = 0
         for file in os.listdir(dir):
-                if file[-3:] == "png":
-                    # if n in test_id:
-                    type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
-                    name_data.append(file)
-                    img = cv2.imread(dir+file)
-                    img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
-                    x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                    y_data.append([int(fl)/data_range])
-                    n += 1
+            if file[-3:] == "png":
+                # if n in test_id:
+                type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
+                name_data.append(file)
+                img = cv2.imread(dir+file)
+                img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
+                x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
+                y_data.append([int(fl)/data_range])
+                n += 1
                 
     y_data = preprocessing.minmax_scale(y_data,feature_range=(0,1))
     # print(y_data)

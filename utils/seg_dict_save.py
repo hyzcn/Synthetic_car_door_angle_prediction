@@ -29,25 +29,29 @@ def seg_part(img, color):
     seg_eron = cv2.erode(seg, kernel, iterations=5)
     seg_eron[seg_eron==0] = 1
     seg_eron[seg_eron==255] = 0
-              
     return seg_eron
 
-def read_seg(path):
+def read_seg(part_name, path):
     color = color_dict[part_name]
     seg_mask_dict = {}
     for file in tqdm(os.listdir(path)):
         if file[-3:] == "png":
-            # print('----seg:{}'.format(file))
+            print('----seg:{}'.format(file))
             img = cv2.imread(path+file)
             seg_mask = seg_part(img, color)
             seg_mask_dict[file] = seg_mask
-
     return seg_mask_dict
 
 def save_dict(part_name, seg_dir, save_dir):
     print("Start loading dictionary...")
-    seg_dict = read_seg(seg_dir)
+    seg_dict = read_seg(part_name, seg_dir)
     np.save(save_dir, seg_dict)
+
+def read_seg_dict(seg_dir, dict_path):
+    if not os.path.isfile(dict_path):
+        save_dict(part_name, seg_dir, dict_path)
+    seg_mask_dict = np.load(dict_path).item()
+    return seg_mask_dict
 
 if __name__=='__main__':
     save_dict(part_name, seg_dir, save_dir)

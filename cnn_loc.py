@@ -20,7 +20,7 @@ import torch.utils.data as Data
 import random
 from tqdm import tqdm
 from sklearn.metrics import mean_absolute_error
-from seg_dict_save import save_dict
+from utils.seg_dict_save import *
 from model import *
 try:
     from torch.hub import load_state_dict_from_url
@@ -69,9 +69,12 @@ data_range = -60
 data_dir = 'datasets/shapenet_car_data/'
 train_seg_dir = 'datasets/shapenet_car_seg/'
 train_dict_dir = 'seg_dict/shapenet_train_seg.npy'
+train_gt_dir = 'gt_dict/shapenet_car_gt.npy'.format(part_name)
 test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
 test_seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
 test_dict_dir = 'seg_dict/shapenet_test_{}_seg.npy'.format(part_name)
+test_gt_dir = 'gt_dict/shapenet_test_{}_gt.npy'.format(part_name)
+
 model_dir = 'params/location/{}_ft_{}.pkl'.format(model_name, part_name)
 plot_dir = 'plots/location/{}_ft_{}_same.jpg'.format(model_name, part_name)
 output_dir = 'outputs/location/{}_ft_{}_same.txt'.format(model_name, part_name)
@@ -253,106 +256,50 @@ def sample_data():
     br_spl = random.sample(br, 1)
     trunk_spl = random.sample(trunk, 1)
     return str(fl_spl[0]), str(fr_spl[0]), str(bl_spl[0]), str(br_spl[0]), str(trunk_spl[0])
-
-
-def get_locat(mask):
-    left = mask.shape[1]
-    right = 0
-    top = None
-    bottom = None
-    for i in range(mask.shape[0]):
-        search = np.argwhere(mask[i]==1)
-        if len(search)!=0 and top==None:
-            top = i
-        if len(search)==0 and top!=None and bottom==None:
-            bottom = i-1
-        if len(search)!=0 and top!=None and i==mask.shape[0]-1 and bottom==None:
-            bottom = i
-        if len(search)!=0:
-            left = min(left, search[0][0])
-            right = max(right, search[-1][0])
-            
-    # print(left, right, top, bottom)
-    if top!=None and bottom!=None:
-        return (left+right)//2, (top+bottom)//2
-    else:
-        return None, None
-
-def read_seg_dict(seg_dir, dict_path):
-    if not os.path.isfile(dict_path):
-        save_dict(part_name, seg_dir, dict_path)
-    seg_mask_dict = np.load(dict_path).item()
-
-    return seg_mask_dict
-
-def load_data(dir, seg_dir, dict_path, mode):
-    seg_mask_dict = read_seg_dict(seg_dir, dict_path)
-    name_data = []
-    mask_data = []
-    x_data = []
-    y_data = []
-    if mode == 'train':
-        print("Start sampling...")
-        for i in tqdm(range(sample_iter)):
-            fl_spl, fr_spl, bl_spl, br_spl, trunk_spl = sample_data()
-            for file in os.listdir(dir):
-                if file[-3:] == "png":
-                    type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
-                    if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl:
-                        x, y = get_locat(seg_mask_dict[file])
-                        if x == None or y == None:
-                            continue
-                        name_data.append(file)
-                        img = cv2.imread(dir+file)
-                        img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
-                        x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                        y_data.append([int(fl)/data_range, x, y])
-    else:
-        num_test_images = int(num_images*test_ratio)
-        random_list = range(num_images)
-        test_id = random.sample(random_list, num_test_images)
-        n = 0
-        for file in os.listdir(dir):
-                if file[-3:] == "png":
-                    # if n in test_id:
-                    type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
-                    x, y = get_locat(seg_mask_dict[file])
-                    if x == None or y == None:
-                            continue
-                    name_data.append(file)
-                    img = cv2.imread(dir+file)
-                    img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
-                    x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                    y_data.append([int(fl)/data_range, x, y])
-                    n += 1
-                
-    y_data = preprocessing.minmax_scale(y_data,feature_range=(0,1))
-    # print(y_data)
-    print(mode+"-Data loaded: "+str(len(name_data))+" images")
-    return name_data, x_data, y_data
-    
-def transform_dataset(dataset, data_transforms):
-    for i in range(len(dataset)):
-        dataset[i] = data_transforms(dataset[i])
-    return dataset
     
 class myDataset(torch.utils.data.Dataset):
     def __init__(self, dataSource, segSource, dict_path, mode):
         # Just normalization for validation
+        self.dir_img = dataSource
+        self.names = self.load_names(dataSource)
+        self.gt_dict = self.load_gt(gtSource)
+
+    def __getitem__(self, index):
+        return self.names[index], load_image(self.dir_img+names[index]), load_gt(names[index])
+        
+    def __len__(self):
+        return len(self.imgs)
+    
+    def load_names(self, dir, mode):
+        name_data = []
+        if mode == 'train':
+            print("Start sampling...")
+            for i in range(sample_iter):
+                for file in os.listdir(dir):
+                    if file[-3:] == "png":
+                        type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
+                        if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl:
+                            name_data.append(file[:-4])
+        else:
+            for file in os.listdir(dir):
+                if file[-3:] == "png":
+                    name_data.append(file[:-4])
+        return name_data
+
+    def load_image(self, dir):
         data_transforms = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ])
-        names, xs, ys = load_data(dataSource, segSource, dict_path, mode)
-        self.names = names
-        self.imgs = transform_dataset(xs, data_transforms)
-        self.labels = Variable(torch.FloatTensor(ys))
+        img = cv2.imread(dir)
+        img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
+        return img
 
-    def __getitem__(self, index):
-        return self.names[index], self.imgs[index], self.labels[index]
-        
-    def __len__(self):
-        return len(self.imgs)
+    def load_gt(self, name):
+        type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
+        bin, x, y = self.gt_dict(name)
+        return [bin, fl, x, y]
+
 
 # Detect if we have a GPU available
 device = torch.device("cuda:0,1,2,3" if torch.cuda.is_available() else "cpu")
@@ -379,7 +326,7 @@ if command == "train":
 
 
     # Create training and validation dataloaders
-    dataloaders_dict = {x: Data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=4) for x in ['train', 'val']}
+    dataloaders_dict = {x: Data.DataLoader(image_datasets[x], batch_size=batch_size, shuffle=True, num_workers=8) for x in ['train', 'val']}
 
     # Send the model to GPU
     model_ft = model_ft.to(device)
@@ -401,6 +348,7 @@ if command == "train":
         for name,param in model_ft.named_parameters():
             if param.requires_grad == True:
                 # print("\t",name)
+                pass
 
     # Observe that all parameters are being optimized
     optimizer_ft = optim.SGD(params_to_update, lr=0.001, momentum=0.9)
@@ -452,7 +400,7 @@ if command == "test":
     testsets = myDataset(test_dir, test_seg_dir, test_dict_dir, 'test')
 
 # Build testset
-testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=4)
+testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=8)
 test_loss, test_dist, test_door, test_pos = test_model(model_ft, testloader_dict, criterion)
 print("total test mse: ", test_loss)
 print("test door mae: ", test_dist*abs(data_range))

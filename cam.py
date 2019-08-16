@@ -17,7 +17,7 @@ from tqdm import tqdm
 import csv
 import re
 import math
-from seg_dict_save import save_dict
+from utils.seg_dict_save import *
 from model import *
 
 

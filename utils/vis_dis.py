@@ -3,18 +3,24 @@ import numpy as np
 import os
 import re
 from tqdm import tqdm
-from seg_dict_save import save_dict
+from seg_dict_save import *
+
+# # Testing settings
+# seg_dir = "datasets/test_seg/"
+# seg_dict_dir = "seg_dict/test_seg.npy"
+# vis_save_dir = "vis_dis/test_vis.npy"
 
 
 # Configurations
 part_name = "fl"
-seg_dir = "datasets/test_seg/"
-seg_dict_dir = "seg_dict/test_seg.npy"
-vis_save_dir = "vis_dis/test_vis.npy"
+seg_dir = "datasets/shapenet_vis_dis/"
+seg_dict_dir = "seg_dict/vis_dis_fl_seg.npy"
+vis_save_dir = "vis_dis/vis_dis_fl.npy"
 
 vis_thresh = 4000
 vis_max = 60
 vis_ratio = 0.5
+
 
 def bin_vis_dis(vis_dict):
     print("Generating visual discriminability...")
@@ -24,7 +30,7 @@ def bin_vis_dis(vis_dict):
         else:
             vis_dict[view].append(False)
 
-def create_vis_dis(seg_mask_dict):
+def create_vis_dis(seg_mask_dictn, vis_save_dir):
     vis_dict = {}
     print("Calculating visible range...")
     for name, mask in tqdm(seg_mask_dict.items()):
@@ -41,20 +47,20 @@ def create_vis_dis(seg_mask_dict):
 
     bin_vis_dis(vis_dict)
     np.save(vis_save_dir, vis_dict)
-
     return vis_dict
 
-def read_seg_dict(seg_dir, dict_path):
-    if not os.path.isfile(dict_path):
-        save_dict(part_name, seg_dir, dict_path)
-    seg_mask_dict = np.load(dict_path).item()
-
-    return seg_mask_dict
+def read_vis_dict(seg_dir, seg_dict_dir, vis_dir):
+    if not os.path.isfile(vis_dir):
+        seg_mask_dict = read_seg_dict(seg_dir, seg_dict_dir)
+        vis_dict = create_vis_dis(seg_mask_dict, vis_dir)
+    else:
+        vis_dict = np.load(vis_dir).item()
+    return vis_dict
 
 def main():
     print("Reading seg_mask_dict...")
     seg_mask_dict = read_seg_dict(seg_dir, seg_dict_dir)
-    vis_dict = create_vis_dis(seg_mask_dict)
+    vis_dict = create_vis_dis(seg_mask_dict, vis_save_dir)
     print(vis_dict)
 
 if __name__ == "__main__":

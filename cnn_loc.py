@@ -53,7 +53,7 @@ num_classes = 1+3
 batch_size = 64
 
 # Number of epochs to train for
-num_epochs = 20
+num_epochs = 25
 
 # Ratio for door loss
 door_ratio = 0.5
@@ -132,7 +132,7 @@ def test_model(model, dataloaders, criterion):
         outputs = delete_false(outputs)
         loss_door = criterion(outputs[:,1], labels[:,1])
         loss_pos = criterion(outputs[:,2:], labels[:,2:])
-        loss = 0.2*loss_bin + 0.4*loss_door + 0.4*loss_pos
+        loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
         dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
         dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
                                 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*480, labels.cpu().detach().numpy()[:,2]*480)
@@ -196,7 +196,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                     outputs = delete_false(outputs)
                     loss_door = criterion(outputs[:,1], labels[:,1])
                     loss_pos = criterion(outputs[:,2:], labels[:,2:])
-                    loss = 0.2*loss_bin + 0.4*loss_door + 0.4*loss_pos
+                    loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
                     dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
                     dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
                                 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*480, labels.cpu().detach().numpy()[:,2]*480)

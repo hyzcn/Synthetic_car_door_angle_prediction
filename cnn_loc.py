@@ -50,13 +50,10 @@ part_name = "fl"
 num_classes = 1+3
 
 # Batch size for training (change depending on how much memory you have)
-batch_size = 64
+batch_size = 30
 
 # Number of epochs to train for
 num_epochs = 25
-
-# Ratio for door loss
-door_ratio = 0.5
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
@@ -97,11 +94,20 @@ val_door_mae = []
 train_pos_mae = []
 val_pos_mae = []
 
-def delete_false(outputs):
-    for item in outputs:
-        if item[0] == False:
-            outputs.remove(item)
-    return outputs
+def delete_false(labels, outputs):
+    index = []
+    for i in range(len(labels)):
+        if labels[i][0]:
+            index.append(i)
+    new_labels = []
+    new_outputs = []
+    for i in index:
+        new_labels.append(labels[i])
+        new_outputs.append(outputs[i])
+    new_labels = torch.FloatTensor(new_labels).to(device)
+    new_outputs = torch.FloatTensor(new_outputs).to(device)
+
+    return new_labels, new_outputs
 
 def output_test(file, html, names, labels, outputs):
     for i in range(len(names)):
@@ -121,6 +127,7 @@ def test_model(model, dataloaders, criterion):
     html = open(html_dir,'w')
     
     running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0}
+    n_num = 0
     for names, inputs, labels in dataloaders:
         inputs = inputs.to(device)
         labels = labels.to(device)
@@ -129,29 +136,30 @@ def test_model(model, dataloaders, criterion):
         
         outputs = model(inputs)
         loss_bin = criterion(outputs[:,0], labels[:,0])
-        outputs = delete_false(outputs)
-        loss_door = criterion(outputs[:,1], labels[:,1])
-        loss_pos = criterion(outputs[:,2:], labels[:,2:])
+        n_labels, n_outputs = delete_false(labels.cpu().detach().numpy(), outputs.cpu().detach().numpy())
+        loss_door = criterion(n_outputs[:,1], n_labels[:,1])
+        loss_pos = criterion(n_outputs[:,2:], n_labels[:,2:])
         loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
-        dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
-        dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
-                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*480, labels.cpu().detach().numpy()[:,2]*480)
+        dist_door = mean_absolute_error(n_outputs.cpu().detach().numpy()[:,1], n_labels.cpu().detach().numpy()[:,1])
+        dist_pos = 0.5*mean_absolute_error(n_outputs.cpu().detach().numpy()[:,2]*640, n_labels.cpu().detach().numpy()[:,2]*640)+\
+                                0.5*mean_absolute_error(n_outputs.cpu().detach().numpy()[:,2]*480, n_labels.cpu().detach().numpy()[:,2]*480)
         
         running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
-        running_loss["door_mse"] += loss_door.item() * outputs.size(0)
-        running_loss["pos_mse"] += loss_pos.item() * outputs.size(0)
-        running_loss["total_mse"] += loss.item() * outputs.size(0)
-        running_loss["door_mae"] += dist_door.item() * outputs.size(0)
-        running_loss["pos_mae"] += dist_pos.item() * outputs.size(0)
+        running_loss["door_mse"] += loss_door.item() * n_outputs.size(0)
+        running_loss["pos_mse"] += loss_pos.item() * n_outputs.size(0)
+        running_loss["total_mse"] += loss.item() * n_outputs.size(0)
+        running_loss["door_mae"] += dist_door.item() * n_outputs.size(0)
+        running_loss["pos_mae"] += dist_pos.item() * n_outputs.size(0)
+        n_num += n_outputs.size(0)
         
         output_test(file, html, names, labels.cpu().detach().numpy(), outputs.cpu().detach().numpy())
     
     loss_bin = running_loss["bin_mse"] / len(dataloaders.dataset)
-    loss_door = running_loss["door_mse"] / len(dataloaders.dataset)
-    loss_pos = running_loss["pos_mse"] / len(dataloaders.dataset)
-    loss = running_loss["total_mse"] / len(dataloaders.dataset)
-    dist_door = running_loss["door_mae"] / len(dataloaders.dataset)
-    dist_pos = running_loss["pos_mae"] / len(dataloaders.dataset)
+    loss_door = running_loss["door_mse"] / n_num
+    loss_pos = running_loss["pos_mse"] / n_num
+    loss = running_loss["total_mse"] / n_num
+    dist_door = running_loss["door_mae"] / n_num
+    dist_pos = running_loss["pos_mae"] / n_num
     file.close()
     html.close()
     
@@ -181,6 +189,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
 
             running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0}
             # Iterate over data.
+            n_num = 0
             for i, (name, inputs, labels) in enumerate(dataloaders[phase]):
                 inputs = inputs.to(device)
                 labels = labels.to(device)
@@ -193,13 +202,13 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
                     loss_bin = criterion(outputs[:,0], labels[:,0])
-                    outputs = delete_false(outputs)
-                    loss_door = criterion(outputs[:,1], labels[:,1])
-                    loss_pos = criterion(outputs[:,2:], labels[:,2:])
+                    n_labels, n_outputs = delete_false(labels.cpu().detach().numpy(), outputs.cpu().detach().numpy())
+                    loss_door = criterion(n_outputs[:,1], n_labels[:,1])
+                    loss_pos = criterion(n_outputs[:,2:], n_labels[:,2:])
                     loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
-                    dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
-                    dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
-                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*480, labels.cpu().detach().numpy()[:,2]*480)
+                    dist_door = mean_absolute_error(n_outputs.cpu().detach().numpy()[:,1], n_labels.cpu().detach().numpy()[:,1])
+                    dist_pos = 0.5*mean_absolute_error(n_outputs.cpu().detach().numpy()[:,2]*640, n_labels.cpu().detach().numpy()[:,2]*640)+\
+                                            0.5*mean_absolute_error(n_outputs.cpu().detach().numpy()[:,2]*480, n_labels.cpu().detach().numpy()[:,2]*480)
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -213,13 +222,14 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 running_loss["total_mse"] += loss.item() * outputs.size(0)
                 running_loss["door_mae"] += dist_door.item() * outputs.size(0)
                 running_loss["pos_mae"] += dist_pos.item() * outputs.size(0)
+                n_num += n_outputs.size(0)
 
             epoch_loss_bin = running_loss["bin_mse"] / len(dataloaders[phase].dataset)
-            epoch_loss_door = running_loss["door_mse"] / len(dataloaders[phase].dataset)
-            epoch_loss_pos = running_loss["pos_mse"] / len(dataloaders[phase].dataset)
-            epoch_loss = running_loss["total_mse"] / len(dataloaders[phase].dataset)
-            epoch_dist_door = running_loss["door_mae"] / len(dataloaders[phase].dataset)
-            epoch_dist_pos = running_loss["pos_mae"] / len(dataloaders[phase].dataset)
+            epoch_loss_door = running_loss["door_mse"] / n_num
+            epoch_loss_pos = running_loss["pos_mse"] / n_num
+            epoch_loss = running_loss["total_mse"] / n_num
+            epoch_dist_door = running_loss["door_mae"] / n_num
+            epoch_dist_pos = running_loss["pos_mae"] / n_num
 
             print('{} Total loss: {:.4f}, Bin loss: {:.4f}, Door loss: {:.4f}, Position loss: {:.4f}, Door dist: {:.4f}, Position dist: {:.4f}'.format(phase, \
                 epoch_loss, epoch_loss_bin, epoch_loss_door, epoch_loss_pos, epoch_dist_door*abs(data_range), epoch_dist_pos))
@@ -244,6 +254,9 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
                 best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(model.state_dict())
+                torch.save(model.model.state_dict(), model_dir)
+        
+        draw_plot()
 
 
     time_elapsed = time.time() - since
@@ -370,8 +383,32 @@ if command == "train":
 
     # Train and evaluate
     model_ft = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs, is_inception=(model_name=="inception"))
-    torch.save(model_ft.module.state_dict(), model_dir)
 
+# Test
+# Load model
+if command == "test":
+    model_ft, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=False)
+    model_ft.load_state_dict(torch.load(model_dir))
+    model_ft = nn.DataParallel(model_ft)
+    if isinstance(model_ft,torch.nn.DataParallel):
+            model_ft = model_ft.module
+    model_ft.to(device)
+
+    model_ft.eval()
+
+    testsets = myDataset(test_dir, test_gt_dir, 'test')
+
+# Build testset
+testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=8)
+test_loss, test_door, test_pos, test_bin, dist_door, dist_pos = test_model(model_ft, testloader_dict, criterion)
+print("Total test mse: ", test_loss)
+print("Test binary mse: ", test_bin)
+print("Test door mse: ", test_door)
+print("Test position mse: ", test_pos)
+print("Test door mae: ", dist_door*abs(data_range))
+print("Test position mae: ", dist_pos)
+
+def draw_plot():
     # plot
     # plt.title('vgg16_bn Feature Extract',fontsize='large',fontweight='bold')
     # plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
@@ -424,27 +461,3 @@ if command == "train":
     plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=7)
 
     plt.savefig(plot_dir+"{}_ft_{}_mae.jpg".format(model_name, part_name))
-
-# Test
-# Load model
-if command == "test":
-    model_ft, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=False)
-    model_ft.load_state_dict(torch.load(model_dir))
-    model_ft = nn.DataParallel(model_ft)
-    if isinstance(model_ft,torch.nn.DataParallel):
-            model_ft = model_ft.module
-    model_ft.to(device)
-
-    model_ft.eval()
-
-    testsets = myDataset(test_dir, test_gt_dir, 'test')
-
-# Build testset
-testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=8)
-test_loss, test_door, test_pos, test_bin, dist_door, dist_pos = test_model(model_ft, testloader_dict, criterion)
-print("Total test mse: ", test_loss)
-print("Test binary mse: ", test_bin)
-print("Test door mse: ", test_door)
-print("Test position mse: ", test_pos)
-print("Test door mae: ", dist_door*abs(data_range))
-print("Test position mae: ", dist_pos)

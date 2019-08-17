@@ -12,7 +12,7 @@ import torch
 import numpy as np
 import cv2
 import pdb
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_absolute_error
 from tqdm import tqdm
 import csv
 import re
@@ -23,8 +23,8 @@ from model import *
 
 ############### Configurations ###############
 # mode settings
-generate_cam = True
-cal_overlap = False
+generate_cam = False
+cal_overlap = True
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
 model_name = "resnet"
@@ -41,6 +41,7 @@ feature_extract = False
 test_dir = "datasets/shapenet_test_{}/".format(part_name)
 seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
 seg_dict_dir = 'seg_dict/shapenet_test_{}_seg.npy'.format(part_name)
+vis_dir = "vis_dis/vis_dis_fl.npy"
 
 # Model settings 
 param_dir = "params/location/{}_ft_{}.pkl".format(model_name, part_name)
@@ -54,7 +55,7 @@ unfocus_dir = 'focus_names/{}_ft_{}_same/unfocus.txt'.format(model_name, part_na
 none_dir = 'focus_names/{}_ft_{}_same/none.txt'.format(model_name, part_name)
 
 # Division threshold
-thresh = 0.2
+thresh = 0.8
 
 # # Test Configurations
 # test_dir = "datasets/test/"
@@ -118,6 +119,7 @@ print("Load predictions...")
 pred_dict = load_pred(pred_dir)
 print("Load seg masks...")
 seg_mask_dict = read_seg_dict(seg_dir, seg_dict_dir)
+vis_dict = np.load(vis_dir).item()
 
 # data init
 focus_loss = 0
@@ -176,7 +178,6 @@ with open(over_save_dir,"w") as csvfile:
             ])
 
             #################################################################
-            # print("{} is being tested...".format(file))
             img = cv2.imread(test_dir+file)
             img_pil = Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB))
 
@@ -203,28 +204,28 @@ with open(over_save_dir,"w") as csvfile:
                 cv2.imwrite(cam_dir+file, result)
 
             if cal_overlap:
-                score = cal_ovlp(seg_mask_dict[file], cv2.resize(CAMs[0],(width, height)))
-                # print(score)
                 type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
-                loss = math.sqrt(mean_squared_error([pred_dict[file][0]], [pred_dict[file][1]]))
-                if score != None and (score > thresh):# or score < 1-thresh):
-                    focus_loss += loss
-                    focus_num += 1
-                    focus_file.write("{} {}\n".format(file, score))
-                elif score != None and (score <= thresh):# and score >= 1-thresh):
-                    unfocus_loss += loss
-                    unfocus_num += 1
-                    unfocus_file.write("{} {}\n".format(file, score))
-                else:
-                    none_loss += loss
-                    none_num += 1
-                    none_file.write("{} {}\n".format(file, score))
+                if vis_dict["{}_{}".format(az,el)][2] == True:
+                    score = cal_ovlp(seg_mask_dict[file], cv2.resize(CAMs[0],(width, height)))
+                    loss = mean_absolute_error([pred_dict[file[:-4]][0]], [pred_dict[file[:-4]][1]])
+                    if score != None and (score > thresh):# or score < 1-thresh):
+                        focus_loss += loss
+                        focus_num += 1
+                        focus_file.write("{} {}\n".format(file, score))
+                    elif score != None and (score <= thresh):# and score >= 1-thresh):
+                        unfocus_loss += loss
+                        unfocus_num += 1
+                        unfocus_file.write("{} {}\n".format(file, score))
+                    else:
+                        none_loss += loss
+                        none_num += 1
+                        none_file.write("{} {}\n".format(file, score))
 
-                over_file.writerow([file, fl, fr, bl, br, trunk, az, el, dist, str(score), str(loss)])
+                    over_file.writerow([file, fl, fr, bl, br, trunk, az, el, dist, str(score), str(loss)])
 
-    focus_loss = focus_loss / focus_num
-    unfocus_loss = unfocus_loss / unfocus_num
-    none_loss = none_loss / none_num
+    focus_loss = focus_loss / focus_num if focus_num != 0  else None
+    unfocus_loss = unfocus_loss / unfocus_num if unfocus_num != 0 else None
+    none_loss = none_loss / none_num if none_num != 0 else None
     print('{} focus images, loss: {}'.format(focus_num, focus_loss))
     print('{} unfocus images, loss: {}'.format(unfocus_num, unfocus_loss))
     print('{} None images, loss: {}'.format(none_num, none_loss))

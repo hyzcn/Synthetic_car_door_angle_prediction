@@ -38,7 +38,7 @@ command = "train"
 
 # Dataset settings
 num_images = 97200
-sample_iter = 1
+sample_iter = 30
 test_ratio = 0.1
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
@@ -49,10 +49,10 @@ part_name = "fl"
 num_classes = 1
 
 # Batch size for training (change depending on how much memory you have)
-batch_size = 32
+batch_size = 16
 
 # Number of epochs to train for
-num_epochs = 2
+num_epochs = 20
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
@@ -64,13 +64,13 @@ data_range = -60
 # Dir settings
 data_dir = 'datasets/shapenet_car_data/'
 test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
-model_dir = 'params/sigmoid/{}_ft_{}test.pkl'.format(model_name, part_name)
-plot_dir = 'plots/sigmoid/{}_ft_{}test.jpg'.format(model_name, part_name)
-output_dir = 'outputs/sigmoid/{}_ft_{}test.txt'.format(model_name, part_name)
-html_dir = "htmls/sigmoid/{}_ft_{}test.txt".format(model_name, part_name)
+model_dir = 'params/{}_ft_{}.pkl'.format(model_name, part_name)
+plot_dir = 'plots/{}_ft_{}_same.jpg'.format(model_name, part_name)
+output_dir = 'outputs/{}_ft_{}_same.txt'.format(model_name, part_name)
+html_dir = "htmls/{}_ft_{}_same.txt".format(model_name, part_name)
 
 print("-------------------------------------")
-print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}".format(model_name, num_classes, batch_size, num_epochs, data_dir, test_dir))
+print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}\nmodel:{}".format(model_name, num_classes, batch_size, num_epochs, data_dir, test_dir, model_dir))
 print("-------------------------------------\n")
 
 x_list = []

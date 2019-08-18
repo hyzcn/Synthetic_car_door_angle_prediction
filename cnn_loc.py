@@ -94,20 +94,68 @@ val_door_mae = []
 train_pos_mae = []
 val_pos_mae = []
 
-def delete_false(labels, outputs):
-    index = []
-    for i in range(len(labels)):
-        if labels[i][0]:
-            index.append(i)
-    new_labels = []
-    new_outputs = []
-    for i in index:
-        new_labels.append(labels[i])
-        new_outputs.append(outputs[i])
-    new_labels = torch.FloatTensor(new_labels).to(device)
-    new_outputs = torch.FloatTensor(new_outputs).to(device)
+torch.autograd.set_detect_anomaly(True)
 
-    return new_labels, new_outputs
+def draw_plot():
+    # plot
+    # plt.title('vgg16_bn Feature Extract',fontsize='large',fontweight='bold')
+    # plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
+    # plt.title('ResNet18 Feature Extract',fontsize='large', fontweight='bold')
+    # plt.title('ResNet18 Fine-tune',fontsize='middle', fontweight='bold')
+    plt.subplot(221)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Total MSE loss",fontsize=10)
+    plt.plot(x_list,train_total,"x-",label="train loss")
+    plt.plot(x_list,val_total,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
+    plt.subplot(222)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Binary MSE loss",fontsize=10)
+    plt.plot(x_list,train_bin,"x-",label="train loss")
+    plt.plot(x_list,val_bin,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
+    plt.subplot(223)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Door MSE loss",fontsize=10)
+    plt.plot(x_list,train_door,"x-",label="train loss")
+    plt.plot(x_list,val_door,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
+    plt.subplot(224)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Position MSE loss",fontsize=10)
+    plt.plot(x_list,train_pos,"x-",label="train loss")
+    plt.plot(x_list,val_pos,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
+
+    plt.savefig(plot_dir+"{}_ft_{}_mse.jpg".format(model_name, part_name))
+    
+    plt.subplot(121)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Door MAE loss",fontsize=10)
+    plt.plot(x_list,train_door_mae,"x-",label="train loss")
+    plt.plot(x_list,val_door_mae,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=7)
+    plt.subplot(122)
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("Position MAE loss",fontsize=10)
+    plt.plot(x_list,train_pos_mae,"x-",label="train loss")
+    plt.plot(x_list,val_pos_mae,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=7)
+
+    plt.savefig(plot_dir+"{}_ft_{}_mae.jpg".format(model_name, part_name))
+
+def delete_false(labels, outputs):
+    for i in range(len(labels)):
+        if labels[i][0] == False:
+            outputs[i][1:] = labels[i][1:]
+
+    return outputs
 
 def output_test(file, html, names, labels, outputs):
     for i in range(len(names)):
@@ -134,15 +182,14 @@ def test_model(model, dataloaders, criterion):
         
         model.eval()
         
-        outputs = model(inputs)
+        outputs = delete_false(labels, outputs)
         loss_bin = criterion(outputs[:,0], labels[:,0])
-        n_labels, n_outputs = delete_false(labels.cpu().detach().numpy(), outputs.cpu().detach().numpy())
-        loss_door = criterion(n_outputs[:,1], n_labels[:,1])
-        loss_pos = criterion(n_outputs[:,2:], n_labels[:,2:])
+        loss_door = criterion(outputs[:,1], labels[:,1])
+        loss_pos = criterion(outputs[:,2:], labels[:,2:])
         loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
-        dist_door = mean_absolute_error(n_outputs.cpu().detach().numpy()[:,1], n_labels.cpu().detach().numpy()[:,1])
-        dist_pos = 0.5*mean_absolute_error(n_outputs.cpu().detach().numpy()[:,2]*640, n_labels.cpu().detach().numpy()[:,2]*640)+\
-                                0.5*mean_absolute_error(n_outputs.cpu().detach().numpy()[:,2]*480, n_labels.cpu().detach().numpy()[:,2]*480)
+        dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
+        dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
+                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*480, labels.cpu().detach().numpy()[:,2]*480)
         
         running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
         running_loss["door_mse"] += loss_door.item() * n_outputs.size(0)
@@ -174,7 +221,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
     best_model_wts = copy.deepcopy(model.state_dict())
     print("Start training...")
 
-    for epoch in tqdm(range(num_epochs)):
+    for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
         x_list.append(epoch)
@@ -189,8 +236,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
 
             running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0}
             # Iterate over data.
-            n_num = 0
-            for i, (name, inputs, labels) in enumerate(dataloaders[phase]):
+            for i, (name, inputs, labels) in tqdm(enumerate(dataloaders[phase])):
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
@@ -201,15 +247,16 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
+                    outputs = delete_false(labels, outputs)
                     loss_bin = criterion(outputs[:,0], labels[:,0])
-                    n_labels, n_outputs = delete_false(labels.cpu().detach().numpy(), outputs.cpu().detach().numpy())
-                    loss_door = criterion(n_outputs[:,1], n_labels[:,1])
-                    loss_pos = criterion(n_outputs[:,2:], n_labels[:,2:])
+                    loss_door = criterion(outputs[:,1], labels[:,1])
+                    loss_pos = criterion(outputs[:,2:], labels[:,2:])
                     loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
-                    dist_door = mean_absolute_error(n_outputs.cpu().detach().numpy()[:,1], n_labels.cpu().detach().numpy()[:,1])
-                    dist_pos = 0.5*mean_absolute_error(n_outputs.cpu().detach().numpy()[:,2]*640, n_labels.cpu().detach().numpy()[:,2]*640)+\
-                                            0.5*mean_absolute_error(n_outputs.cpu().detach().numpy()[:,2]*480, n_labels.cpu().detach().numpy()[:,2]*480)
+                    dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
+                    dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
+                                            0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*480, labels.cpu().detach().numpy()[:,2]*480)
 
+                    # print("--step {}: total loss: {}, loss_bin: {}, loss_door: {}, loss_pos: {}".format(i, loss, loss_bin, loss_door, loss_pos))
                     # backward + optimize only if in training phase
                     if phase == 'train':
                         loss.backward()
@@ -217,19 +264,18 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
 
                 # statistics
                 running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
-                running_loss["door_mse"] += loss_door.item() * outputs.size(0)
-                running_loss["pos_mse"] += loss_pos.item() * outputs.size(0)
-                running_loss["total_mse"] += loss.item() * outputs.size(0)
-                running_loss["door_mae"] += dist_door.item() * outputs.size(0)
-                running_loss["pos_mae"] += dist_pos.item() * outputs.size(0)
-                n_num += n_outputs.size(0)
+                running_loss["door_mse"] += loss_door.item() * inputs.size(0)
+                running_loss["pos_mse"] += loss_pos.item() * inputs.size(0)
+                running_loss["total_mse"] += loss.item() * inputs.size(0)
+                running_loss["door_mae"] += dist_door.item() * inputs.size(0)
+                running_loss["pos_mae"] += dist_pos.item() * inputs.size(0)
 
             epoch_loss_bin = running_loss["bin_mse"] / len(dataloaders[phase].dataset)
-            epoch_loss_door = running_loss["door_mse"] / n_num
-            epoch_loss_pos = running_loss["pos_mse"] / n_num
-            epoch_loss = running_loss["total_mse"] / n_num
-            epoch_dist_door = running_loss["door_mae"] / n_num
-            epoch_dist_pos = running_loss["pos_mae"] / n_num
+            epoch_loss_door = running_loss["door_mse"] / len(dataloaders[phase].dataset)
+            epoch_loss_pos = running_loss["pos_mse"] / len(dataloaders[phase].dataset)
+            epoch_loss = running_loss["total_mse"] / len(dataloaders[phase].dataset)
+            epoch_dist_door = running_loss["door_mae"] / len(dataloaders[phase].dataset)
+            epoch_dist_pos = running_loss["pos_mae"] / len(dataloaders[phase].dataset)
 
             print('{} Total loss: {:.4f}, Bin loss: {:.4f}, Door loss: {:.4f}, Position loss: {:.4f}, Door dist: {:.4f}, Position dist: {:.4f}'.format(phase, \
                 epoch_loss, epoch_loss_bin, epoch_loss_door, epoch_loss_pos, epoch_dist_door*abs(data_range), epoch_dist_pos))
@@ -254,7 +300,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
                 best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(model.state_dict())
-                torch.save(model.model.state_dict(), model_dir)
+                torch.save(model.state_dict(), model_dir)
         
         draw_plot()
 
@@ -325,7 +371,7 @@ class myDataset(torch.utils.data.Dataset):
     def load_gt(self, name):
         ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
         bin, x, y = self.gt_dict[name]
-        return torch.FloatTensor([bin, int(fl)/data_range, x if x!= None else -1, y if x!= None else -1])
+        return torch.FloatTensor([bin, int(fl)/data_range if x!= None else 0, x if x!= None else 0, y if x!= None else 0])
 
 
 # Detect if we have a GPU available
@@ -408,56 +454,3 @@ print("Test position mse: ", test_pos)
 print("Test door mae: ", dist_door*abs(data_range))
 print("Test position mae: ", dist_pos)
 
-def draw_plot():
-    # plot
-    # plt.title('vgg16_bn Feature Extract',fontsize='large',fontweight='bold')
-    # plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
-    # plt.title('ResNet18 Feature Extract',fontsize='large', fontweight='bold')
-    # plt.title('ResNet18 Fine-tune',fontsize='middle', fontweight='bold')
-    plt.subplot(221)
-    plt.xticks(fontsize=8)
-    plt.yticks(fontsize=8)
-    plt.title("Total MSE loss",fontsize=10)
-    plt.plot(x_list,train_total,"x-",label="train loss")
-    plt.plot(x_list,val_total,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
-    plt.subplot(222)
-    plt.xticks(fontsize=8)
-    plt.yticks(fontsize=8)
-    plt.title("Binary MSE loss",fontsize=10)
-    plt.plot(x_list,train_bin,"x-",label="train loss")
-    plt.plot(x_list,val_bin,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
-    plt.subplot(223)
-    plt.xticks(fontsize=8)
-    plt.yticks(fontsize=8)
-    plt.title("Door MSE loss",fontsize=10)
-    plt.plot(x_list,train_door,"x-",label="train loss")
-    plt.plot(x_list,val_door,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
-    plt.subplot(224)
-    plt.xticks(fontsize=8)
-    plt.yticks(fontsize=8)
-    plt.title("Position MSE loss",fontsize=10)
-    plt.plot(x_list,train_pos,"x-",label="train loss")
-    plt.plot(x_list,val_pos,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
-
-    plt.savefig(plot_dir+"{}_ft_{}_mse.jpg".format(model_name, part_name))
-    
-    plt.subplot(121)
-    plt.xticks(fontsize=8)
-    plt.yticks(fontsize=8)
-    plt.title("Door MAE loss",fontsize=10)
-    plt.plot(x_list,train_door_mae,"x-",label="train loss")
-    plt.plot(x_list,val_door_mae,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=7)
-    plt.subplot(122)
-    plt.xticks(fontsize=8)
-    plt.yticks(fontsize=8)
-    plt.title("Position MAE loss",fontsize=10)
-    plt.plot(x_list,train_pos_mae,"x-",label="train loss")
-    plt.plot(x_list,val_pos_mae,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=7)
-
-    plt.savefig(plot_dir+"{}_ft_{}_mae.jpg".format(model_name, part_name))

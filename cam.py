@@ -23,7 +23,7 @@ from model import *
 
 ############### Configurations ###############
 # mode settings
-generate_cam = False
+generate_cam = True
 cal_overlap = True
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]

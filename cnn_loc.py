@@ -50,10 +50,10 @@ part_name = "fl"
 num_classes = 1+3
 
 # Batch size for training (change depending on how much memory you have)
-batch_size = 30
+batch_size = 64
 
 # Number of epochs to train for
-num_epochs = 25
+num_epochs = 30
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
@@ -70,7 +70,7 @@ train_gt_dir = 'gt_dict/shapenet_car_gt.npy'.format(part_name)
 test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
 test_gt_dir = 'gt_dict/shapenet_test_{}_gt.npy'.format(part_name)
 ## Model
-model_dir = 'params/location/{}_ft_{}.pkl'.format(model_name, part_name)
+model_dir = 'params/location/{}_ft_{}_0.4_256.pkl'.format(model_name, part_name)
 plot_dir = 'plots/location/'
 output_dir = 'outputs/location/{}_ft_{}_same.txt'.format(model_name, part_name)
 html_dir = "htmls/location/{}_ft_{}_same.txt".format(model_name, part_name)
@@ -131,7 +131,7 @@ def draw_plot():
     plt.plot(x_list,val_pos,"+-",label="val loss")
     plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
 
-    plt.savefig(plot_dir+"{}_ft_{}_mse.jpg".format(model_name, part_name))
+    plt.savefig(plot_dir+"{}_ft_{}_mse_0.4_256.jpg".format(model_name, part_name))
     
     plt.subplot(121)
     plt.xticks(fontsize=8)
@@ -148,11 +148,18 @@ def draw_plot():
     plt.plot(x_list,val_pos_mae,"+-",label="val loss")
     plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=7)
 
-    plt.savefig(plot_dir+"{}_ft_{}_mae.jpg".format(model_name, part_name))
+    plt.savefig(plot_dir+"{}_ft_{}_mae_0.4_256.jpg".format(model_name, part_name))
 
-def delete_false(labels, outputs):
+def delete_false_train(labels, outputs):
     for i in range(len(labels)):
         if labels[i][0] == False:
+            outputs[i][1:] = labels[i][1:]
+
+    return outputs
+
+def delete_false_test(labels, outputs):
+    for i in range(len(outputs)):
+        if outputs[i][0].data < 0.5:
             outputs[i][1:] = labels[i][1:]
 
     return outputs
@@ -173,40 +180,40 @@ def test_model(model, dataloaders, criterion):
     since = time.time()
     file = open(output_dir,'w')
     html = open(html_dir,'w')
+    print("Start testing...")
     
     running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0}
-    n_num = 0
-    for names, inputs, labels in dataloaders:
+    for names, inputs, labels in tqdm(dataloaders):
         inputs = inputs.to(device)
         labels = labels.to(device)
         
         model.eval()
         
-        outputs = delete_false(labels, outputs)
+        outputs = model(inputs)
+        outputs = delete_false_test(labels, outputs)
         loss_bin = criterion(outputs[:,0], labels[:,0])
         loss_door = criterion(outputs[:,1], labels[:,1])
         loss_pos = criterion(outputs[:,2:], labels[:,2:])
         loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
         dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
         dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
-                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*480, labels.cpu().detach().numpy()[:,2]*480)
+                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3]*480, labels.cpu().detach().numpy()[:,3]*480)
         
         running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
-        running_loss["door_mse"] += loss_door.item() * n_outputs.size(0)
-        running_loss["pos_mse"] += loss_pos.item() * n_outputs.size(0)
-        running_loss["total_mse"] += loss.item() * n_outputs.size(0)
-        running_loss["door_mae"] += dist_door.item() * n_outputs.size(0)
-        running_loss["pos_mae"] += dist_pos.item() * n_outputs.size(0)
-        n_num += n_outputs.size(0)
+        running_loss["door_mse"] += loss_door.item() * inputs.size(0)
+        running_loss["pos_mse"] += loss_pos.item() * inputs.size(0)
+        running_loss["total_mse"] += loss.item() * inputs.size(0)
+        running_loss["door_mae"] += dist_door.item() * inputs.size(0)
+        running_loss["pos_mae"] += dist_pos.item() * inputs.size(0)
         
         output_test(file, html, names, labels.cpu().detach().numpy(), outputs.cpu().detach().numpy())
     
     loss_bin = running_loss["bin_mse"] / len(dataloaders.dataset)
-    loss_door = running_loss["door_mse"] / n_num
-    loss_pos = running_loss["pos_mse"] / n_num
-    loss = running_loss["total_mse"] / n_num
-    dist_door = running_loss["door_mae"] / n_num
-    dist_pos = running_loss["pos_mae"] / n_num
+    loss_door = running_loss["door_mse"] / len(dataloaders.dataset)
+    loss_pos = running_loss["pos_mse"] / len(dataloaders.dataset)
+    loss = running_loss["total_mse"] / len(dataloaders.dataset)
+    dist_door = running_loss["door_mae"] / len(dataloaders.dataset)
+    dist_pos = running_loss["pos_mae"] / len(dataloaders.dataset)
     file.close()
     html.close()
     
@@ -247,14 +254,17 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
-                    outputs = delete_false(labels, outputs)
+                    outputs = delete_false_train(labels, outputs)
                     loss_bin = criterion(outputs[:,0], labels[:,0])
                     loss_door = criterion(outputs[:,1], labels[:,1])
                     loss_pos = criterion(outputs[:,2:], labels[:,2:])
+                    # if epoch < 10:
                     loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
+                    # else:
+                    #     loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
                     dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
                     dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
-                                            0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*480, labels.cpu().detach().numpy()[:,2]*480)
+                                            0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3]*480, labels.cpu().detach().numpy()[:,3]*480)
 
                     # print("--step {}: total loss: {}, loss_bin: {}, loss_door: {}, loss_pos: {}".format(i, loss, loss_bin, loss_door, loss_pos))
                     # backward + optimize only if in training phase
@@ -300,7 +310,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
                 best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(model.state_dict())
-                torch.save(model.state_dict(), model_dir)
+                torch.save(model.module.state_dict(), model_dir)
         
         draw_plot()
 
@@ -445,7 +455,7 @@ if command == "test":
     testsets = myDataset(test_dir, test_gt_dir, 'test')
 
 # Build testset
-testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=8)
+testloader_dict = Data.DataLoader(testsets, batch_size=64, shuffle=True, num_workers=8)
 test_loss, test_door, test_pos, test_bin, dist_door, dist_pos = test_model(model_ft, testloader_dict, criterion)
 print("Total test mse: ", test_loss)
 print("Test binary mse: ", test_bin)

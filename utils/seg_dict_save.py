@@ -8,8 +8,8 @@ from tqdm import tqdm
 # save_dir = "../seg_dict/test_seg.npy"
 
 part_name = 'fl'
-seg_dir = '../datasets/shapenet_test_{}_seg/'.format(part_name)
-save_dir = "../seg_dict/shapenet_test_{}_seg.npy".format(part_name)
+seg_dir = '../datasets/shapenet_car_seg/'.format(part_name)
+save_dir = "../seg_dict/shapenet_train_seg.npy".format(part_name)
 
 
 color_dict = {'fl':[0,0,0], 'fr':[0,0,128], 'bl':[0,128,0], 'br':[0,128,128],
@@ -36,7 +36,7 @@ def read_seg(part_name, path):
     seg_mask_dict = {}
     for file in tqdm(os.listdir(path)):
         if file[-3:] == "png":
-            print('----seg:{}'.format(file))
+            # print('----seg:{}'.format(file))
             img = cv2.imread(path+file)
             seg_mask = seg_part(img, color)
             seg_mask_dict[file] = seg_mask

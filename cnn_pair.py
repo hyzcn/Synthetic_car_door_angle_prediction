@@ -34,7 +34,7 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "train"
+command = "test"
 
 # Dataset settings
 num_images = 97200
@@ -49,7 +49,7 @@ part_name = "fl"
 num_classes = 1
 
 # Batch size for training (change depending on how much memory you have)
-batch_size = 16
+batch_size = 64
 
 # Number of epochs to train for
 num_epochs = 20
@@ -62,20 +62,42 @@ feature_extract = False
 data_range = -60
 
 # Dir settings
-data_dir = 'datasets/shapenet_car_data/'
-test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
-model_dir = 'params/{}_ft_{}.pkl'.format(model_name, part_name)
-plot_dir = 'plots/{}_ft_{}_same.jpg'.format(model_name, part_name)
-output_dir = 'outputs/{}_ft_{}_same.txt'.format(model_name, part_name)
-html_dir = "htmls/{}_ft_{}_same.txt".format(model_name, part_name)
+train_dir = 'datasets/preset_car_data/'
+test_dir = 'datasets/preset_test_{}/'.format(part_name)
+model_dir = 'params/sigmoid/{}_ft_{}.pkl'.format(model_name, part_name)
+plot_dir = 'plots/sigmoid/{}_ft_{}_same.jpg'.format(model_name, part_name)
+output_dir = 'outputs/sigmoid/{}_ft_{}_same.txt'.format(model_name, part_name)
+html_dir = "htmls/sigmoid/{}_ft_{}_same.txt".format(model_name, part_name)
 
 print("-------------------------------------")
-print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}\nmodel:{}".format(model_name, num_classes, batch_size, num_epochs, data_dir, test_dir, model_dir))
+print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}\nmodel:{}".format(model_name, num_classes, batch_size, num_epochs, train_dir, test_dir, model_dir))
 print("-------------------------------------\n")
 
 x_list = []
-train_list = []
-val_list = []
+train_mse = []
+val_mse = []
+train_mae = []
+val_mae = []
+
+def draw_plot():
+    # plot
+    plt.subplot(121)
+    plt.cla()
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("MSE loss")
+    plt.plot(x_list,train_mse,"x-",label="train loss")
+    plt.plot(x_list,val_mse,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
+    plt.subplot(122)
+    plt.cla()
+    plt.xticks(fontsize=8)
+    plt.yticks(fontsize=8)
+    plt.title("MAE loss")
+    plt.plot(x_list,train_mae,"x-",label="train loss")
+    plt.plot(x_list,val_mae,"+-",label="val loss")
+    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
+    plt.savefig(plot_dir)
 
 def output_test(file, html, names, result):
     for i in range(len(names)):
@@ -154,20 +176,9 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
-                    # Get model outputs and calculate loss
-                    # Special case for inception because in training it has an auxiliary output. In train
-                    #   mode we calculate the loss by summing the final output and the auxiliary output
-                    #   but in testing we only consider the final output.
-                    if is_inception and phase == 'train':
-                        # From https://discuss.pytorch.org/t/how-to-optimize-inception-model-with-auxiliary-classifiers/7958
-                        outputs, aux_outputs = model(inputs)
-                        loss1 = criterion(outputs, labels)
-                        loss2 = criterion(aux_outputs, labels)
-                        loss = loss1 + 0.4*loss2
-                    else:
-                        outputs = model(inputs)
-                        loss = criterion(outputs, labels)
-                        dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())
+                    outputs = model(inputs)
+                    loss = criterion(outputs, labels)
+                    dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -185,14 +196,19 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             
             # plot
             if phase == 'train':
-                train_list.append(epoch_dist*60)
+                train_mse.append(epoch_loss)
+                train_mae.append(epoch_dist*abs(data_range))
             else:
-                val_list.append(epoch_dist*60)
+                val_mse.append(epoch_loss)
+                val_mae.append(epoch_dist*abs(data_range))
 
             # deep copy the model
             if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
                 best_loss = epoch_loss
                 best_model_wts = copy.deepcopy(model.state_dict())
+                torch.save(model.module.state_dict(), model_dir)
+
+        draw_plot()
 
 
     time_elapsed = time.time() - since
@@ -218,66 +234,55 @@ def sample_data():
     trunk_spl = random.sample(trunk, 1)
     return str(fl_spl[0]), str(fr_spl[0]), str(bl_spl[0]), str(br_spl[0]), str(trunk_spl[0])
 
-def load_data(dir, mode):
-    name_data = []
-    x_data = []
-    y_data = []
-    if mode == 'train':
-        print("Start sampling...")
-        for i in tqdm(range(sample_iter)):
-            fl_spl, fr_spl, bl_spl, br_spl, trunk_spl = sample_data()
+class myDataset(torch.utils.data.Dataset):
+    def __init__(self, dataSource, mode, test_id=None):
+        # Just normalization for validation
+        self.dir_img = dataSource
+        self.names = self.load_names(dataSource, mode, test_id)
+        print("{} data loaded: {} images".format(mode, len(self.names)))
+
+    def __getitem__(self, index):
+        return self.names[index], self.load_image(self.dir_img+self.names[index]+".png"), self.load_gt(self.names[index])
+        
+    def __len__(self):
+        return len(self.names)
+    
+    def load_names(self, dir, mode, test_id=None):
+        name_data = []
+        if mode == 'train':
+            print("Start sampling...")
+            for i in tqdm(range(sample_iter)):
+                fl_spl, fr_spl, bl_spl, br_spl, trunk_spl = sample_data()
+                for file in os.listdir(dir):
+                    if file[-3:] == "png":
+                        type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
+                        if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl:
+                            name_data.append(file[:-4])
+        elif mode == 'test':
             for file in os.listdir(dir):
                 if file[-3:] == "png":
-                    type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
-                    if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl:
-                        name_data.append(file)
-                        img = cv2.imread(dir+file)
-                        img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
-                        x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                        y_data.append([int(fl)/data_range])
-    else:
-        num_test_images = int(num_images*test_ratio)
-        random_list = range(num_images)
-        test_id = random.sample(random_list, num_test_images)
-        n = 0
-        for file in os.listdir(dir):
-            if file[-3:] == "png":
-                # if n in test_id:
-                type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
-                name_data.append(file)
-                img = cv2.imread(dir+file)
-                img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
-                x_data.append(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
-                y_data.append([int(fl)/data_range])
+                    name_data.append(file[:-4])
+        elif mode == 'test_baseline':
+            n = 0
+            for file in os.listdir(dir):
+                if file[-3:] == "png":
+                     if n in test_id:
+                        name_data.append(file[:-4])
                 n += 1
-                
-    y_data = preprocessing.minmax_scale(y_data,feature_range=(0,1))
-    # print(y_data)
-    print(mode+"-Data loaded: "+str(len(name_data))+" images")
-    return name_data, x_data, y_data
-    
-def transform_dataset(dataset, data_transforms):
-    for i in range(len(dataset)):
-        dataset[i] = data_transforms(dataset[i])
-    return dataset
-    
-class myDataset(torch.utils.data.Dataset):
-    def __init__(self, dataSource, mode):
-        # Just normalization for validation
+        return name_data
+
+    def load_image(self, dir):
         data_transforms = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
             ])
-        names, xs, ys = load_data(dataSource, mode)
-        self.names = names
-        self.imgs = transform_dataset(xs, data_transforms)
-        self.labels = Variable(torch.FloatTensor(ys))
+        img = cv2.imread(dir)
+        img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
+        return data_transforms(img)
 
-    def __getitem__(self, index):
-        return self.names[index], self.imgs[index], self.labels[index]
-        
-    def __len__(self):
-        return len(self.imgs)
+    def load_gt(self, name):
+        ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
+        return torch.FloatTensor([int(fl)/data_range])
 
 # Detect if we have a GPU available
 device = torch.device("cuda:0,1,2,3" if torch.cuda.is_available() else "cpu")
@@ -297,7 +302,7 @@ if command == "train":
     print("Initializing Datasets and Dataloaders...")
 
     # Create training and validation datasets
-    trainsets = myDataset(data_dir, 'train')
+    trainsets = myDataset(train_dir, 'train')
     testsets = myDataset(test_dir, 'test')
 
     #image_datasets = {'train': myDataset([transform_dataset(X_train, data_transforms), Variable(torch.FloatTensor(y_train))]), 'val': myDataset([transform_dataset(X_val, data_transforms), Variable(torch.FloatTensor(y_val))])}
@@ -338,7 +343,7 @@ if command == "train":
 
     # plot
     # plt.title('vgg16_bn Feature Extract',fontsize='large',fontweight='bold')
-    plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
+    # plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
     #plt.title('ResNet18 Feature Extract',fontsize='large', fontweight='bold')
     # plt.title('ResNet18 Fine-tune',fontsize='large', fontweight='bold')
     #plt.title('DenseNet121 Feature Extract',fontsize='large',fontweight='bold')
@@ -361,6 +366,9 @@ if command == "test":
     model_ft.eval()
 
     testsets = myDataset(test_dir, 'test')
+    # random_list = range(num_images)
+    # test_id = random.sample(random_list, 2880)
+    # testsets = myDataset(train_dir, 'test_baseline', test_id)
 
 # Build testset
 testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=4)

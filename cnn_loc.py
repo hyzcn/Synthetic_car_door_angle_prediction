@@ -35,7 +35,7 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "train"
+command = "test"
 
 # Dataset settings
 num_images = 97200
@@ -60,24 +60,24 @@ num_epochs = 30
 feature_extract = False
 
 # Data range
-data_range = -60
+data_range = 60
 
 # Dir settings
 ## Train
-train_dir = 'datasets/shapenet_car_data/'
-train_gt_dir = 'gt_dict/shapenet_car_gt.npy'.format(part_name)
+train_dir = 'datasets/preset_car_data/'
+train_gt_dir = 'gt_dict/preset_car_gt.npy'.format(part_name)
 ## Test
 test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
 test_gt_dir = 'gt_dict/shapenet_test_{}_gt.npy'.format(part_name)
 ## Model
-model_dir = 'params/location/{}_ft_{}_0.4_256.pkl'.format(model_name, part_name)
+model_dir = 'params/location/{}_ft_{}_0.3_0.6_64.pkl'.format(model_name, part_name)
 plot_dir = 'plots/location/'
 output_dir = 'outputs/location/{}_ft_{}_same.txt'.format(model_name, part_name)
 html_dir = "htmls/location/{}_ft_{}_same.txt".format(model_name, part_name)
 
 
 print("-------------------------------------")
-print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}".format(model_name, num_classes, batch_size, num_epochs, train_dir, test_dir))
+print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}\nmodel:{}".format(model_name, num_classes, batch_size, num_epochs, train_dir, test_dir, model_dir))
 print("-------------------------------------\n")
 
 x_list = []
@@ -131,7 +131,7 @@ def draw_plot():
     plt.plot(x_list,val_pos,"+-",label="val loss")
     plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
 
-    plt.savefig(plot_dir+"{}_ft_{}_mse_0.4_256.jpg".format(model_name, part_name))
+    plt.savefig(plot_dir+"{}_ft_{}_mse_0.4_0.6_64.jpg".format(model_name, part_name))
     
     plt.subplot(121)
     plt.xticks(fontsize=8)
@@ -148,7 +148,7 @@ def draw_plot():
     plt.plot(x_list,val_pos_mae,"+-",label="val loss")
     plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=7)
 
-    plt.savefig(plot_dir+"{}_ft_{}_mae_0.4_256.jpg".format(model_name, part_name))
+    plt.savefig(plot_dir+"{}_ft_{}_mae_0.4_0.6_64.jpg".format(model_name, part_name))
 
 def delete_false_train(labels, outputs):
     for i in range(len(labels)):
@@ -258,10 +258,10 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                     loss_bin = criterion(outputs[:,0], labels[:,0])
                     loss_door = criterion(outputs[:,1], labels[:,1])
                     loss_pos = criterion(outputs[:,2:], labels[:,2:])
-                    # if epoch < 10:
-                    loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
-                    # else:
-                    #     loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
+                    if epoch < 10:
+                        loss = 0.1*loss_bin + 0.3*loss_door + 0.6*loss_pos
+                    else:
+                        loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
                     dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
                     dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
                                             0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3]*480, labels.cpu().detach().numpy()[:,3]*480)
@@ -339,10 +339,10 @@ def sample_data():
     return str(fl_spl[0]), str(fr_spl[0]), str(bl_spl[0]), str(br_spl[0]), str(trunk_spl[0])
     
 class myDataset(torch.utils.data.Dataset):
-    def __init__(self, dataSource, gtSource, mode):
+    def __init__(self, dataSource, gtSource, mode, test_id=None):
         # Just normalization for validation
         self.dir_img = dataSource
-        self.names = self.load_names(dataSource, mode)
+        self.names = self.load_names(dataSource, mode, test_id)
         self.gt_dict = np.load(gtSource).item()
         print("{} data loaded: {} images".format(mode, len(self.names)))
 
@@ -352,7 +352,7 @@ class myDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.names)
     
-    def load_names(self, dir, mode):
+    def load_names(self, dir, mode, test_id=None):
         name_data = []
         if mode == 'train':
             print("Start sampling...")
@@ -363,10 +363,17 @@ class myDataset(torch.utils.data.Dataset):
                         ins, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
                         if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl:
                             name_data.append(file[:-4])
-        else:
+        elif mode == 'test':
             for file in os.listdir(dir):
                 if file[-3:] == "png":
                     name_data.append(file[:-4])
+        elif mode == 'test_baseline':
+            n = 0
+            for file in os.listdir(dir):
+                if file[-3:] == "png":
+                     if n in test_id:
+                        name_data.append(file[:-4])
+                n += 1
         return name_data
 
     def load_image(self, dir):
@@ -453,6 +460,9 @@ if command == "test":
     model_ft.eval()
 
     testsets = myDataset(test_dir, test_gt_dir, 'test')
+    # random_list = range(num_images)
+    # test_id = random.sample(random_list, 2880)
+    # testsets = myDataset(train_dir, train_gt_dir, 'test_baseline', test_id)
 
 # Build testset
 testloader_dict = Data.DataLoader(testsets, batch_size=64, shuffle=True, num_workers=8)

@@ -44,18 +44,18 @@ seg_dict_dir = 'seg_dict/shapenet_test_{}_seg.npy'.format(part_name)
 vis_dir = "vis_dis/vis_dis_fl.npy"
 
 # Model settings 
-param_dir = "params/location/{}_ft_{}.pkl".format(model_name, part_name)
+param_dir = "params/location/{}_ft_{}_0.3_0.6_64.pkl".format(model_name, part_name)
 pred_dir = 'htmls/location/{}_ft_{}_same.txt'.format(model_name, part_name)
 
 # Save settings
-cam_dir = "cam_test/location/{}_ft_{}_same/".format(model_name, part_name)
+cam_dir = "cam_test/location/{}_ft_{}_appr/".format(model_name, part_name)
 over_save_dir = 'overlaps/location/{}_ft_{}_same.csv'.format(model_name, part_name)
 focus_dir = 'focus_names/{}_ft_{}_same/focus.txt'.format(model_name, part_name)
 unfocus_dir = 'focus_names/{}_ft_{}_same/unfocus.txt'.format(model_name, part_name)
 none_dir = 'focus_names/{}_ft_{}_same/none.txt'.format(model_name, part_name)
 
 # Division threshold
-thresh = 0.8
+thresh = 0.9
 
 # # Test Configurations
 # test_dir = "datasets/test/"
@@ -130,10 +130,11 @@ focus_num = 0
 unfocus_num = 0
 none_num = 0
 
-# save dir init
-focus_file = open(focus_dir, 'w')
-unfocus_file = open(unfocus_dir, 'w')
-none_file = open(none_dir, 'w')
+if cal_overlap:
+    # save dir init
+    focus_file = open(focus_dir, 'w')
+    unfocus_file = open(unfocus_dir, 'w')
+    none_file = open(none_dir, 'w')
 
 with open(over_save_dir,"w") as csvfile: 
     over_file = csv.writer(csvfile)
@@ -208,11 +209,11 @@ with open(over_save_dir,"w") as csvfile:
                 if vis_dict["{}_{}".format(az,el)][2] == True:
                     score = cal_ovlp(seg_mask_dict[file], cv2.resize(CAMs[0],(width, height)))
                     loss = mean_absolute_error([pred_dict[file[:-4]][0]], [pred_dict[file[:-4]][1]])
-                    if score != None and (score > thresh):# or score < 1-thresh):
+                    if score != None and (score > thresh or score < 1-thresh):
                         focus_loss += loss
                         focus_num += 1
                         focus_file.write("{} {}\n".format(file, score))
-                    elif score != None and (score <= thresh):# and score >= 1-thresh):
+                    elif score != None and (score <= thresh and score >= 1-thresh):
                         unfocus_loss += loss
                         unfocus_num += 1
                         unfocus_file.write("{} {}\n".format(file, score))
@@ -230,9 +231,10 @@ with open(over_save_dir,"w") as csvfile:
     print('{} unfocus images, loss: {}'.format(unfocus_num, unfocus_loss))
     print('{} None images, loss: {}'.format(none_num, none_loss))
 
-    focus_file.close()
-    unfocus_file.close()
-    none_file.close()
+    if cal_overlap:
+        focus_file.close()
+        unfocus_file.close()
+        none_file.close()
 
 
 

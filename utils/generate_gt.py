@@ -6,10 +6,10 @@ from tqdm import tqdm
 
 # Configurations
 part_name = 'fl'
-data_dir = "../datasets/shapenet_car/"
-data_seg_dir = "../datasets/shapenet_car_seg/"
-mask_dir = "../seg_dict/shapenet_train_seg.npy"
-save_dir = "../gt_dict/shapenet_car_gt.npy".format(part_name)
+data_dir = "../datasets/preset_test_fl/"
+data_seg_dir = "../datasets/preset_test_fl_seg/"
+mask_dir = "../seg_dict/preset_test_fl_seg.npy"
+save_dir = "../gt_dict/preset_test_fl_gt.npy".format(part_name)
 # Fixed settings
 seg_dir = "../datasets/preset_vis_dis/"
 seg_dict_dir = "../seg_dict/vis_dis_fl_seg.npy"
@@ -19,7 +19,6 @@ vis_dir = "../vis_dis/vis_dis_fl.npy"
 def get_locat(mask):
     height = len(mask)
     width = len(mask[0])
-    print(width, height)
     left = mask.shape[1]
     right = 0
     top = None
@@ -28,11 +27,8 @@ def get_locat(mask):
         search = np.argwhere(mask[i]==1)
         if len(search)!=0 and top==None:
             top = i
-        if len(search)==0 and top!=None and bottom==None:
-            bottom = i-1
-        if len(search)!=0 and top!=None and i==mask.shape[0]-1 and bottom==None:
-            bottom = i
         if len(search)!=0:
+            bottom = i
             left = min(left, search[0][0])
             right = max(right, search[-1][0])
             

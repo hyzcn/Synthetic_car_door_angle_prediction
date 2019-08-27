@@ -209,11 +209,11 @@ with open(over_save_dir,"w") as csvfile:
                 if vis_dict["{}_{}".format(az,el)][2] == True:
                     score = cal_ovlp(seg_mask_dict[file], cv2.resize(CAMs[0],(width, height)))
                     loss = mean_absolute_error([pred_dict[file[:-4]][0]], [pred_dict[file[:-4]][1]])
-                    if score != None and (score > thresh or score < 1-thresh):
+                    if score != None and (score > thresh)# or score < 1-thresh):
                         focus_loss += loss
                         focus_num += 1
                         focus_file.write("{} {}\n".format(file, score))
-                    elif score != None and (score <= thresh and score >= 1-thresh):
+                    elif score != None and (score <= thresh)# and score >= 1-thresh):
                         unfocus_loss += loss
                         unfocus_num += 1
                         unfocus_file.write("{} {}\n".format(file, score))

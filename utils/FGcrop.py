@@ -2,14 +2,17 @@ import os
 import numpy as np
 import cv2
 from tqdm import tqdm
+import re
+from random_sample import sample_data
 
 # Test Settings
-data_dir = '../datasets/test/'
-seg_dir = '../datasets/test_seg/'
-img_save_dir = "../datasets/test_crop/"
-seg_save_dir = "../datasets/test_seg_crop/"
+# data_dir = '../datasets/test/'
+# seg_dir = '../datasets/test_seg/'
+# img_save_dir = "../datasets/test_crop/"
+# seg_save_dir = "../datasets/test_seg_crop/"
 
 part_name = 'fl'
+sample_iter = 800
 data_dir = '../datasets/preset_car_data/'
 seg_dir = '../datasets/preset_car_seg/'
 img_save_dir = "../datasets/preset_car_crop/"
@@ -46,18 +49,28 @@ def get_crop_loc(mask):
             left = min(left, search[0][0])
             right = max(right, search[-1][0])
 
-    return top-10, bottom+10, left-10, right+10
+    return max(0, top-10), min(height-1, bottom+10), max(0, left-10), min(width-1, right+10)
 
 def gen_crop():
-    for file in tqdm(os.listdir(data_dir)):
-        img = cv2.imread(data_dir+file)
-        seg = cv2.imread(seg_dir+file)
+    name_data = []
+    print("Start sampling...")
+    for i in tqdm(range(sample_iter)):
+        fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
+        for file in os.listdir(data_dir):
+            if file[-3:] == "png":
+                type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
+                if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                    name_data.append(file[:-4])
+    print("{} images sampled.".format(len(name_data)))
+    for file in tqdm(name_data):
+        img = cv2.imread(data_dir+file+".png")
+        seg = cv2.imread(seg_dir+file+".png")
         mask = crop_mask(seg)
         top, bottom, left, right = get_crop_loc(mask)
         crop_img = img[top:bottom,left:right,:]
         crop_seg = seg[top:bottom,left:right,:]
-        cv2.imwrite(img_save_dir+file, crop_img)
-        cv2.imwrite(seg_save_dir+file, crop_seg)
+        cv2.imwrite(img_save_dir+file+".png", crop_img)
+        cv2.imwrite(seg_save_dir+file+".png", crop_seg)
 
 if __name__=="__main__":
     gen_crop()

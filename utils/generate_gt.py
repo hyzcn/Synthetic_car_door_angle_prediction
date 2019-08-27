@@ -6,10 +6,10 @@ from tqdm import tqdm
 
 # Configurations
 part_name = 'fl'
-data_dir = "../datasets/preset_test_fl/"
-data_seg_dir = "../datasets/preset_test_fl_seg/"
-mask_dir = "../seg_dict/preset_test_fl_seg.npy"
-save_dir = "../gt_dict/preset_test_fl_gt.npy".format(part_name)
+data_dir = "../datasets/shapenet_test_fl/"
+data_seg_dir = "../datasets/shapenet_test_fl_seg/"
+mask_dir = "../seg_dict/shapenet_test_fl_seg.npy"
+save_dir = "../gt_dict/shapenet_test_fl_gt.npy".format(part_name)
 # Fixed settings
 seg_dir = "../datasets/preset_vis_dis/"
 seg_dict_dir = "../seg_dict/vis_dis_fl_seg.npy"

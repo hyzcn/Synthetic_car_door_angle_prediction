@@ -21,6 +21,8 @@ import random
 from tqdm import tqdm
 from sklearn.metrics import mean_absolute_error
 from model import *
+import re
+from utils.random_sample import sample_data
 try:
     from torch.hub import load_state_dict_from_url
 except ImportError:
@@ -34,11 +36,11 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "test"
+command = "train"
 
 # Dataset settings
 num_images = 97200
-sample_iter = 30
+sample_iter = 2400
 test_ratio = 0.1
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
@@ -52,7 +54,7 @@ num_classes = 1
 batch_size = 64
 
 # Number of epochs to train for
-num_epochs = 20
+num_epochs = 50
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
@@ -139,7 +141,6 @@ def test_model(model, dataloaders, criterion):
     html.close()
     
     return loss, dist
-        
     
 
 def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_inception=False):
@@ -218,22 +219,6 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
     model.load_state_dict(best_model_wts)
     return model
 
-def sample_data():
-    fl = [x for x in range(-40, 1, 20)]
-    fr = [x for x in range(0, 60, 20)]
-    bl = [x for x in range(-40, 1, 20)]
-    br = [x for x in range(0, 60, 20)]
-    trunk = [x for x in range(0, 60, 20)] 
-    az = [x for x in range(0, 361, 40)]
-    el = [x for x in range(20, 90, 20)]
-    dist = [400, 450]
-    fl_spl = random.sample(fl, 1)
-    fr_spl = random.sample(fr, 1)
-    bl_spl = random.sample(bl, 1)
-    br_spl = random.sample(br, 1)
-    trunk_spl = random.sample(trunk, 1)
-    return str(fl_spl[0]), str(fr_spl[0]), str(bl_spl[0]), str(br_spl[0]), str(trunk_spl[0])
-
 class myDataset(torch.utils.data.Dataset):
     def __init__(self, dataSource, mode, test_id=None):
         # Just normalization for validation
@@ -252,11 +237,11 @@ class myDataset(torch.utils.data.Dataset):
         if mode == 'train':
             print("Start sampling...")
             for i in tqdm(range(sample_iter)):
-                fl_spl, fr_spl, bl_spl, br_spl, trunk_spl = sample_data()
+                fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
                 for file in os.listdir(dir):
                     if file[-3:] == "png":
-                        type, fl, fr, bl, br, trunk, az, el, dist = file.split('_')
-                        if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl:
+                        type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
+                        if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
                             name_data.append(file[:-4])
         elif mode == 'test':
             for file in os.listdir(dir):
@@ -327,31 +312,18 @@ if command == "train":
         for name,param in model_ft.named_parameters():
             if param.requires_grad == True:
                 params_to_update.append(param)
-                print("\t",name)
+                # print("\t",name)
     else:
         for name,param in model_ft.named_parameters():
             if param.requires_grad == True:
-                print("\t",name)
+                # print("\t",name)
+                pass
 
     # Observe that all parameters are being optimized
     optimizer_ft = optim.SGD(params_to_update, lr=0.001, momentum=0.9)
 
-
     # Train and evaluate
     model_ft = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft, num_epochs=num_epochs, is_inception=(model_name=="inception"))
-    torch.save(model_ft.module.state_dict(), model_dir)
-
-    # plot
-    # plt.title('vgg16_bn Feature Extract',fontsize='large',fontweight='bold')
-    # plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
-    #plt.title('ResNet18 Feature Extract',fontsize='large', fontweight='bold')
-    # plt.title('ResNet18 Fine-tune',fontsize='large', fontweight='bold')
-    #plt.title('DenseNet121 Feature Extract',fontsize='large',fontweight='bold')
-    #plt.title('DenseNet121 Fine-tuning',fontsize='large',fontweight='bold')
-    plt.plot(x_list,train_list,"x-",label="train loss")
-    plt.plot(x_list,val_list,"+-",label="val loss")
-    plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
-    plt.savefig(plot_dir)
 
 # Test
 # Load model
@@ -365,10 +337,10 @@ if command == "test":
 
     model_ft.eval()
 
-    testsets = myDataset(test_dir, 'test')
-    # random_list = range(num_images)
-    # test_id = random.sample(random_list, 2880)
-    # testsets = myDataset(train_dir, 'test_baseline', test_id)
+    # testsets = myDataset(test_dir, 'test')
+    random_list = range(num_images)
+    test_id = random.sample(random_list, 2880)
+    testsets = myDataset(train_dir, 'test_baseline', test_id)
 
 # Build testset
 testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=4)

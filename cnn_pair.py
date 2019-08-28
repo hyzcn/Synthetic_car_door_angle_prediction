@@ -38,6 +38,9 @@ print("Torchvision Version: ",torchvision.__version__)
 # Train/Test mode
 command = "train"
 
+# Add crop images to train set
+add_crop = True
+
 # Dataset settings
 num_images = 97200
 sample_iter = 2400
@@ -54,7 +57,7 @@ num_classes = 1
 batch_size = 64
 
 # Number of epochs to train for
-num_epochs = 50
+num_epochs = 100
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
@@ -65,11 +68,15 @@ data_range = -60
 
 # Dir settings
 train_dir = 'datasets/preset_car_data/'
+if add_crop == False:
+    crop_dir = None
+else:
+    crop_dir = 'datasets/preset_car_crop/'
 test_dir = 'datasets/preset_test_{}/'.format(part_name)
-model_dir = 'params/sigmoid/{}_ft_{}.pkl'.format(model_name, part_name)
-plot_dir = 'plots/sigmoid/{}_ft_{}_same.jpg'.format(model_name, part_name)
-output_dir = 'outputs/sigmoid/{}_ft_{}_same.txt'.format(model_name, part_name)
-html_dir = "htmls/sigmoid/{}_ft_{}_same.txt".format(model_name, part_name)
+model_dir = 'params/crop/{}_ft_{}.pkl'.format(model_name, part_name)
+plot_dir = 'plots/crop/{}_ft_{}_same.jpg'.format(model_name, part_name)
+output_dir = 'outputs/crop/{}_ft_{}_same.txt'.format(model_name, part_name)
+html_dir = "htmls/crop/{}_ft_{}_same.txt".format(model_name, part_name)
 
 print("-------------------------------------")
 print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}\nmodel:{}".format(model_name, num_classes, batch_size, num_epochs, train_dir, test_dir, model_dir))
@@ -220,40 +227,55 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
     return model
 
 class myDataset(torch.utils.data.Dataset):
-    def __init__(self, dataSource, mode, test_id=None):
+    def __init__(self, dataSource, mode, test_id=None, cropSource=None):
         # Just normalization for validation
         self.dir_img = dataSource
-        self.names = self.load_names(dataSource, mode, test_id)
+        self.dir_crop = cropSource
+        self.names = self.load_names(mode, test_id)
         print("{} data loaded: {} images".format(mode, len(self.names)))
 
     def __getitem__(self, index):
-        return self.names[index], self.load_image(self.dir_img+self.names[index]+".png"), self.load_gt(self.names[index])
+        if self.names[index][-3:] == "png":
+            return self.names[index], self.load_image(self.dir_crop+self.names[index]), self.load_gt(self.names[index])
+        else:
+            return self.names[index], self.load_image(self.dir_img+self.names[index]+".png"), self.load_gt(self.names[index])
         
     def __len__(self):
         return len(self.names)
     
-    def load_names(self, dir, mode, test_id=None):
+    def load_crops(self, dir):
+        name_data = []
+        for file in os.listdir(dir):
+            if file[-3:] == "png":
+                name_data.append(file)
+        return name_data
+
+    def load_names(self, mode, test_id=None):
         name_data = []
         if mode == 'train':
             print("Start sampling...")
             for i in tqdm(range(sample_iter)):
                 fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
-                for file in os.listdir(dir):
+                for file in os.listdir(self.dir_img):
                     if file[-3:] == "png":
                         type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
                         if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
                             name_data.append(file[:-4])
+            if self.dir_crop:
+                crop_name = self.load_crops(self.dir_crop)
+                name_data += crop_name
         elif mode == 'test':
-            for file in os.listdir(dir):
+            for file in os.listdir(self.dir_img):
                 if file[-3:] == "png":
                     name_data.append(file[:-4])
         elif mode == 'test_baseline':
             n = 0
-            for file in os.listdir(dir):
+            for file in os.listdir(self.dir_img):
                 if file[-3:] == "png":
                      if n in test_id:
                         name_data.append(file[:-4])
                 n += 1
+        
         return name_data
 
     def load_image(self, dir):
@@ -287,7 +309,7 @@ if command == "train":
     print("Initializing Datasets and Dataloaders...")
 
     # Create training and validation datasets
-    trainsets = myDataset(train_dir, 'train')
+    trainsets = myDataset(dataSource=train_dir, cropSource=crop_dir, mode='train')
     testsets = myDataset(test_dir, 'test')
 
     #image_datasets = {'train': myDataset([transform_dataset(X_train, data_transforms), Variable(torch.FloatTensor(y_train))]), 'val': myDataset([transform_dataset(X_val, data_transforms), Variable(torch.FloatTensor(y_val))])}

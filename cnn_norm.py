@@ -28,7 +28,7 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "test"
+command = "train"
 
 # Dataset settings
 num_images = 97200
@@ -46,7 +46,7 @@ num_classes = 1
 batch_size = 64
 
 # Number of epochs to train for
-num_epochs = 25
+num_epochs = 100
 
 # Data range
 data_range = -60
@@ -216,7 +216,7 @@ class myDataset(torch.utils.data.Dataset):
     def load_names(self, dir, mode, data_id):
         name_data = []
         n = 0
-        if mode == "train" and mode == "test":
+        if mode == "train" or mode == "test":
             for file in os.listdir(dir):
                 if file[-3:] == "png":
                     if n in data_id:

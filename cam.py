@@ -23,7 +23,7 @@ from model import *
 
 ############### Configurations ###############
 # mode settings
-generate_cam = True
+generate_cam = False
 cal_overlap = True
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
@@ -31,31 +31,31 @@ model_name = "resnet"
 part_name = 'fl'
 
 # Number of classes in the dataset
-num_classes = 1+3
+num_classes = 1
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
 feature_extract = False
 
 # Dataset directory
-test_dir = "datasets/shapenet_test_{}/".format(part_name)
-seg_dir = 'datasets/shapenet_test_{}_seg/'.format(part_name)
-seg_dict_dir = 'seg_dict/shapenet_test_{}_seg.npy'.format(part_name)
+test_dir = "datasets/preset_test_{}/".format(part_name)
+seg_dir = 'datasets/preset_test_{}_seg/'.format(part_name)
+seg_dict_dir = 'seg_dict/preset_test_{}_seg.npy'.format(part_name)
 vis_dir = "vis_dis/vis_dis_fl.npy"
 
 # Model settings 
-param_dir = "params/location/{}_ft_{}_0.3_0.6_64.pkl".format(model_name, part_name)
-pred_dir = 'htmls/location/{}_ft_{}_same.txt'.format(model_name, part_name)
+param_dir = "params/sigmoid/{}_ft_{}.pkl".format(model_name, part_name)
+pred_dir = 'htmls/sigmoid/{}_ft_{}_same.txt'.format(model_name, part_name)
 
 # Save settings
-cam_dir = "cam_test/location/{}_ft_{}_appr/".format(model_name, part_name)
-over_save_dir = 'overlaps/location/{}_ft_{}_same.csv'.format(model_name, part_name)
+cam_dir = "cam_test/sigmoid/{}_ft_{}_same/".format(model_name, part_name)
+over_save_dir = 'overlaps/sigmoid/{}_ft_{}_same.csv'.format(model_name, part_name)
 focus_dir = 'focus_names/{}_ft_{}_same/focus.txt'.format(model_name, part_name)
 unfocus_dir = 'focus_names/{}_ft_{}_same/unfocus.txt'.format(model_name, part_name)
 none_dir = 'focus_names/{}_ft_{}_same/none.txt'.format(model_name, part_name)
 
 # Division threshold
-thresh = 0.9
+thresh = 0.8
 
 # # Test Configurations
 # test_dir = "datasets/test/"
@@ -151,7 +151,8 @@ with open(over_save_dir,"w") as csvfile:
 
             # get the softmax weight
             params = list(net.parameters())
-            weight_softmax = np.squeeze(params[-2].data.numpy())
+            # weight_softmax = np.squeeze(params[-2].data.numpy())
+            weight_softmax = np.squeeze(params[-2].data.numpy()).reshape(1, 512)
 
             def returnCAM(feature_conv, weight_softmax, class_idx):
                 # generate the class activation maps upsample to 256x256
@@ -193,7 +194,7 @@ with open(over_save_dir,"w") as csvfile:
             # bar.set_description("idx: {}, idx[0]: {}".format(idx, idx[0]))
 
             # generate class activation mapping for the top1 prediction
-            CAMs = returnCAM(features_blobs[0], weight_softmax, [1])
+            CAMs = returnCAM(features_blobs[0], weight_softmax, [idx])
 
             # render the CAM and output
             img = cv2.imread(test_dir+file)
@@ -208,12 +209,13 @@ with open(over_save_dir,"w") as csvfile:
                 type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
                 if vis_dict["{}_{}".format(az,el)][2] == True:
                     score = cal_ovlp(seg_mask_dict[file], cv2.resize(CAMs[0],(width, height)))
+                    # loss = mean_absolute_error([pred_dict[file][0]], [pred_dict[file][1]])
                     loss = mean_absolute_error([pred_dict[file[:-4]][0]], [pred_dict[file[:-4]][1]])
-                    if score != None and (score > thresh)# or score < 1-thresh):
+                    if score != None and (score > thresh or score < 1-thresh):
                         focus_loss += loss
                         focus_num += 1
                         focus_file.write("{} {}\n".format(file, score))
-                    elif score != None and (score <= thresh)# and score >= 1-thresh):
+                    elif score != None and (score <= thresh and score >= 1-thresh):
                         unfocus_loss += loss
                         unfocus_num += 1
                         unfocus_file.write("{} {}\n".format(file, score))

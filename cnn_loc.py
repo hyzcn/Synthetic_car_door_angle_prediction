@@ -38,6 +38,7 @@ print("Torchvision Version: ",torchvision.__version__)
 
 # Train/Test mode
 command = "train"
+add_crop = True
 
 # Dataset settings
 num_images = 97200
@@ -55,7 +56,7 @@ num_classes = 1+3
 batch_size = 64
 
 # Number of epochs to train for
-num_epochs = 50
+num_epochs = 100
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
@@ -68,14 +69,21 @@ data_range = -60
 ## Train
 train_dir = 'datasets/preset_car_data/'
 train_gt_dir = 'gt_dict/preset_car_gt.npy'.format(part_name)
+## Crop
+if add_crop == False:
+    crop_dir = None
+    crop_gt_dir = None
+else:
+    crop_dir = 'datasets/preset_car_crop/'
+    crop_gt_dir = 'gt_dict/preset_car_crop_gt.npy'
 ## Test
-test_dir = 'datasets/shapenet_test_{}/'.format(part_name)
-test_gt_dir = 'gt_dict/shapenet_test_{}_gt.npy'.format(part_name)
+test_dir = 'datasets/preset_test_{}/'.format(part_name)
+test_gt_dir = 'gt_dict/preset_test_{}_gt.npy'.format(part_name)
 ## Model
-model_dir = 'params/location/{}_ft_{}_0.3_0.6_64.pkl'.format(model_name, part_name)
-plot_dir = 'plots/location/'
-output_dir = 'outputs/location/{}_ft_{}_same.txt'.format(model_name, part_name)
-html_dir = "htmls/location/{}_ft_{}_same.txt".format(model_name, part_name)
+model_dir = 'params/crop_loc/{}_ft_{}_0.3_0.6_64.pkl'.format(model_name, part_name)
+plot_dir = 'plots/crop_loc/'
+output_dir = 'outputs/crop_loc/{}_ft_{}_same.txt'.format(model_name, part_name)
+html_dir = "htmls/crop_loc/{}_ft_{}_same.txt".format(model_name, part_name)
 
 
 print("-------------------------------------")
@@ -171,8 +179,8 @@ def output_test(file, html, names, labels, outputs):
         # visualize txt
         type_gt, fl_gt, fr_gt, bl_gt, br_gt, trunk_gt, az_gt, el_gt, dist_gt = names[i].split('_')
         content  = "name: {}---gt: [ {}, {}, {}, {}]---predictions: [".format(names[i], bool(labels[i][0]), int(labels[i][1]*data_range), \
-                                                                            int(labels[i][2]*640), int(labels[i][3]*480))
-        content += '{:.2f}, {}, {}, {}'.format(outputs[i][0], int(round(outputs[i][1]*data_range)), int(round(outputs[i][2]*640)), int(round(labels[i][3]*480)))
+                                                                            int(labels[i][2]*224), int(labels[i][3]*224))
+        content += '{:.2f}, {}, {}, {}'.format(outputs[i][0], int(round(outputs[i][1]*data_range)), int(round(outputs[i][2]*224)), int(round(labels[i][3]*224)))
         content += "]\n"
         file.write(content)
         html.write("{} gt:{} pred:{}\n".format(names[i], fl_gt, str(int(round(outputs[i][1]*data_range)))))
@@ -198,8 +206,8 @@ def test_model(model, dataloaders, criterion):
         loss_pos = criterion(outputs[:,2:], labels[:,2:])
         loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
         dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
-        dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
-                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3]*480, labels.cpu().detach().numpy()[:,3]*480)
+        dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*224, labels.cpu().detach().numpy()[:,2]*224)+\
+                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3]*224, labels.cpu().detach().numpy()[:,3]*224)
         
         running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
         running_loss["door_mse"] += loss_door.item() * inputs.size(0)
@@ -260,13 +268,13 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                     loss_bin = criterion(outputs[:,0], labels[:,0])
                     loss_door = criterion(outputs[:,1], labels[:,1])
                     loss_pos = criterion(outputs[:,2:], labels[:,2:])
-                    if epoch < 10:
+                    if epoch < 20:
                         loss = 0.1*loss_bin + 0.3*loss_door + 0.6*loss_pos
                     else:
                         loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
                     dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
-                    dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*640, labels.cpu().detach().numpy()[:,2]*640)+\
-                                            0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3]*480, labels.cpu().detach().numpy()[:,3]*480)
+                    dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*224, labels.cpu().detach().numpy()[:,2]*224)+\
+                                            0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3]*224, labels.cpu().detach().numpy()[:,3]*224)
 
                     # print("--step {}: total loss: {}, loss_bin: {}, loss_door: {}, loss_pos: {}".format(i, loss, loss_bin, loss_door, loss_pos))
                     # backward + optimize only if in training phase
@@ -325,18 +333,31 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
     return model
     
 class myDataset(torch.utils.data.Dataset):
-    def __init__(self, dataSource, gtSource, mode, test_id=None):
+    def __init__(self, dataSource, gtSource, mode, cropSource=None, cropGt=None, test_id=None):
         # Just normalization for validation
         self.dir_img = dataSource
+        self.gt_img = np.load(gtSource).item()
+        if cropSource:
+            self.dir_crop = cropSource
+            self.gt_crop = np.load(cropGt).item()
         self.names = self.load_names(dataSource, mode, test_id)
-        self.gt_dict = np.load(gtSource).item()
         print("{} data loaded: {} images".format(mode, len(self.names)))
 
     def __getitem__(self, index):
-        return self.names[index], self.load_image(self.dir_img+self.names[index]+".png"), self.load_gt(self.names[index])
+        if self.names[index][-3:] == "png":
+            return self.names[index], self.load_image(self.dir_crop+self.names[index]), self.load_gt(self.gt_crop, self.names[index][:-4])
+        else:
+            return self.names[index], self.load_image(self.dir_img+self.names[index]+".png"), self.load_gt(self.gt_img, self.names[index])
         
     def __len__(self):
         return len(self.names)
+
+    def load_crops(self, dir):
+        name_data = []
+        for file in os.listdir(dir):
+            if file[-3:] == "png":
+                name_data.append(file)
+        return name_data
     
     def load_names(self, dir, mode, test_id=None):
         name_data = []
@@ -349,6 +370,9 @@ class myDataset(torch.utils.data.Dataset):
                         ins, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
                         if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
                             name_data.append(file[:-4])
+            if self.dir_crop:
+                crop_name = self.load_crops(self.dir_crop)
+                name_data += crop_name
         elif mode == 'test':
             for file in os.listdir(dir):
                 if file[-3:] == "png":
@@ -371,9 +395,9 @@ class myDataset(torch.utils.data.Dataset):
         img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
         return data_transforms(img)
 
-    def load_gt(self, name):
+    def load_gt(self, dic, name):
         ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
-        bin, x, y = self.gt_dict[name]
+        bin, x, y = dic[name]
         return torch.FloatTensor([bin, int(fl)/data_range if x!= None else 0, x if x!= None else 0, y if x!= None else 0])
 
 
@@ -395,8 +419,8 @@ if command == "train":
     print("Initializing Datasets and Dataloaders...")
 
     # Create training and validation datasets
-    trainsets = myDataset(train_dir, train_gt_dir, 'train')
-    testsets = myDataset(test_dir, test_gt_dir, 'test')
+    trainsets = myDataset(dataSource=train_dir, gtSource=train_gt_dir, cropSource=crop_dir, cropGt=crop_gt_dir, mode='train')
+    testsets = myDataset(dataSource=test_dir, gtSource=test_gt_dir, mode='test')
 
     image_datasets = {'train': trainsets, 'val': testsets}
 
@@ -445,10 +469,11 @@ if command == "test":
 
     model_ft.eval()
 
-    testsets = myDataset(test_dir, test_gt_dir, 'test')
+    testsets = myDataset(dataSource=test_dir, gtSource=test_gt_dir, mode='test')
+    ## original testset
     # random_list = range(num_images)
     # test_id = random.sample(random_list, 2880)
-    # testsets = myDataset(train_dir, train_gt_dir, 'test_baseline', test_id)
+    # testsets = myDataset(dataSource=train_dir, gtSource=train_gt_dir, mode='test_baseline', test_id=test_id)
 
 # Build testset
 testloader_dict = Data.DataLoader(testsets, batch_size=64, shuffle=True, num_workers=8)

@@ -6,10 +6,10 @@ from tqdm import tqdm
 
 # Configurations
 part_name = 'fl'
-data_dir = "../datasets/shapenet_test_fl/"
-data_seg_dir = "../datasets/shapenet_test_fl_seg/"
-mask_dir = "../seg_dict/shapenet_test_fl_seg.npy"
-save_dir = "../gt_dict/shapenet_test_fl_gt.npy".format(part_name)
+data_dir = "../datasets/preset_car_crop/"
+data_seg_dir = "../datasets/preset_car_seg_crop/"
+mask_dir = "../seg_dict/preset_car_crop_seg.npy"
+save_dir = "../gt_dict/preset_car_crop_gt.npy".format(part_name)
 # Fixed settings
 seg_dir = "../datasets/preset_vis_dis/"
 seg_dict_dir = "../seg_dict/vis_dis_fl_seg.npy"
@@ -54,6 +54,6 @@ def create_gt(data_dir, data_seg_dir, mask_dir, seg_dir, seg_dict_dir, vis_dir, 
     return gt_dict
 
 if __name__ == "__main__":
-    gt_dict = create_gt(data_dir, data_seg_dir, mask_dir, seg_dir, seg_dict_dir, vis_dir, save_dir)
-    # gt_dict = np.load(save_dir).item()
-    # print(gt_dict)
+    # gt_dict = create_gt(data_dir, data_seg_dir, mask_dir, seg_dir, seg_dict_dir, vis_dir, save_dir)
+    gt_dict = np.load(save_dir).item()
+    print(gt_dict)

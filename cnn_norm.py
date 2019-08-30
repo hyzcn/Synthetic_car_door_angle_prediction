@@ -37,10 +37,10 @@ test_num = 2880
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
 model_name = "resnet"
-part_name = "fl"
+part_name = "all"
 
 # Number of classes in the dataset
-num_classes = 1
+num_classes = 5
 
 # Batch size for training (change depending on how much memory you have)
 batch_size = 64
@@ -49,11 +49,11 @@ batch_size = 64
 num_epochs = 100
 
 # Data range
-data_range = -60
+data_range = 60
 
 # Dir settings
-data_dir = 'datasets/preset_car_data/'
-test_dir = 'datasets/preset_test_{}/'.format(part_name)
+data_dir = 'datasets/train/preset_car_data/'
+test_dir = 'datasets/all_test/preset_test_random/'.format(part_name)
 model_dir = 'params/{}_ft_{}_norm.pkl'.format(model_name, part_name)
 plot_dir = 'plots/{}_ft_{}_norm.jpg'.format(model_name, part_name)
 output_dir = 'outputs/{}_ft_{}_norm.txt'.format(model_name, part_name)
@@ -111,7 +111,7 @@ def test_model(model, dataloaders, criterion):
         
         outputs = model(inputs)
         loss = criterion(outputs, labels)
-        dist = mean_absolute_error(outputs.cpu().detach().numpy()*data_range, labels.cpu().detach().numpy()*data_range)
+        dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())*data_range
         
         running_loss += loss.item() * inputs.size(0)
         running_dist += dist * inputs.size(0)
@@ -161,7 +161,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
                     loss = criterion(outputs, labels)
-                    dist = mean_absolute_error(outputs.cpu().detach().numpy()*data_range, labels.cpu().detach().numpy()*data_range)
+                    dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())*data_range
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -240,7 +240,20 @@ class myDataset(torch.utils.data.Dataset):
 
     def load_gt(self, name):
         ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
-        return torch.FloatTensor([int(fl)/data_range])
+        if part_name == "all":
+            return torch.FloatTensor([abs(int(fl))/data_range, abs(int(fr))/data_range, abs(int(bl))/data_range, abs(int(br))/data_range, abs(int(trunk))/data_range])
+        elif part_name == "fl":
+            return torch.FloatTensor([abs(int(fl))/data_range])
+        elif part_name == "fr":
+            return torch.FloatTensor([abs(int(fr))/data_range])
+        elif part_name == "bl":
+            return torch.FloatTensor([abs(int(bl))/data_range])
+        elif part_name == "br":
+            return torch.FloatTensor([abs(int(br))/data_range])
+        elif part_name == "trunk":
+            return torch.FloatTensor([abs(int(trunk))/data_range])
+        else:
+            print("part name error in loading gt!!!")
 
 # Detect if we have a GPU available
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

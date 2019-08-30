@@ -19,7 +19,7 @@ def seg_part(img, color):
     seg = np.zeros([img.shape[0], img.shape[1]], np.uint8)
     for i in range(img.shape[0]):
         for j in range(img.shape[1]):
-            if img[i][j][0] == color[0] and img[i][j][1] == color[1] and img[i][j][2] == color[2]:
+            if img[i][j][2] == color[0] and img[i][j][1] == color[1] and img[i][j][0] == color[2]:
                 seg[i][j] = 0
             else:
                 seg[i][j] = 255
@@ -47,7 +47,7 @@ def save_dict(part_name, seg_dir, save_dir):
     seg_dict = read_seg(part_name, seg_dir)
     np.save(save_dir, seg_dict)
 
-def read_seg_dict(seg_dir, dict_path):
+def read_seg_dict(part_name, seg_dir, dict_path):
     if not os.path.isfile(dict_path):
         save_dict(part_name, seg_dir, dict_path)
     seg_mask_dict = np.load(dict_path).item()

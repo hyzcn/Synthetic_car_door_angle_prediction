@@ -54,6 +54,6 @@ def create_gt(data_dir, data_seg_dir, mask_dir, seg_dir, seg_dict_dir, vis_dir, 
     return gt_dict
 
 if __name__ == "__main__":
-    # gt_dict = create_gt(data_dir, data_seg_dir, mask_dir, seg_dir, seg_dict_dir, vis_dir, save_dir)
-    gt_dict = np.load(save_dir).item()
-    print(gt_dict)
+    gt_dict = create_gt(data_dir, data_seg_dir, mask_dir, seg_dir, seg_dict_dir, vis_dir, save_dir)
+    # gt_dict = np.load(save_dir).item()
+    # print(gt_dict)

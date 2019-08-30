@@ -37,7 +37,7 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "train"
+command = "test"
 add_crop = True
 
 # Dataset settings
@@ -50,7 +50,8 @@ model_name = "resnet"
 part_name = "fl"
 
 # Number of classes in the dataset
-num_classes = 1+3
+num_factors = 5
+num_classes = (1+3)*num_factors
 
 # Batch size for training (change depending on how much memory you have)
 batch_size = 64
@@ -63,7 +64,7 @@ num_epochs = 100
 feature_extract = False
 
 # Data range
-data_range = -60
+data_range = 60
 
 # Dir settings
 ## Train
@@ -80,10 +81,10 @@ else:
 test_dir = 'datasets/preset_test_{}/'.format(part_name)
 test_gt_dir = 'gt_dict/preset_test_{}_gt.npy'.format(part_name)
 ## Model
-model_dir = 'params/crop_loc/{}_ft_{}_0.3_0.6_64.pkl'.format(model_name, part_name)
-plot_dir = 'plots/crop_loc/'
-output_dir = 'outputs/crop_loc/{}_ft_{}_same.txt'.format(model_name, part_name)
-html_dir = "htmls/crop_loc/{}_ft_{}_same.txt".format(model_name, part_name)
+model_dir = 'params/location/{}_ft_{}_0.3_0.6_64.pkl'.format(model_name, part_name)
+plot_dir = 'plots/location/'
+output_dir = 'outputs/location/{}_ft_{}_same.txt'.format(model_name, part_name)
+html_dir = "htmls/location/{}_ft_{}_same.txt".format(model_name, part_name)
 
 
 print("-------------------------------------")
@@ -108,10 +109,6 @@ torch.autograd.set_detect_anomaly(True)
 
 def draw_plot():
     # plot
-    # plt.title('vgg16_bn Feature Extract',fontsize='large',fontweight='bold')
-    # plt.title('vgg16_bn Fine-tune',fontsize='large', fontweight='bold')
-    # plt.title('ResNet18 Feature Extract',fontsize='large', fontweight='bold')
-    # plt.title('ResNet18 Fine-tune',fontsize='middle', fontweight='bold')
     plt.subplot(221)
     plt.xticks(fontsize=8)
     plt.yticks(fontsize=8)
@@ -162,15 +159,17 @@ def draw_plot():
 
 def delete_false_train(labels, outputs):
     for i in range(len(labels)):
-        if labels[i][0] == False:
-            outputs[i][1:] = labels[i][1:]
+        for j in range(num_classes,4):
+            if labels[i][j] == False:
+                outputs[i][j+1:j+4] = labels[i][j+1:j+4]
 
     return outputs
 
 def delete_false_test(labels, outputs):
     for i in range(len(outputs)):
-        if outputs[i][0].data < 0.5:
-            outputs[i][1:] = labels[i][1:]
+        for j in range(num_classes,4):
+            if outputs[i][j].data < 0.5 and labels[i][j] == False:
+                outputs[i][j+1:j+4] = labels[i][j+1:j+4]
 
     return outputs
 
@@ -201,13 +200,24 @@ def test_model(model, dataloaders, criterion):
         
         outputs = model(inputs)
         outputs = delete_false_test(labels, outputs)
-        loss_bin = criterion(outputs[:,0], labels[:,0])
-        loss_door = criterion(outputs[:,1], labels[:,1])
-        loss_pos = criterion(outputs[:,2:], labels[:,2:])
-        loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
-        dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
-        dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*224, labels.cpu().detach().numpy()[:,2]*224)+\
-                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3]*224, labels.cpu().detach().numpy()[:,3]*224)
+        loss_bin = 0
+        loss_door = 0
+        loss_pos = 0
+        dist_door = 0
+        dist_pos = 0
+        for k in range(num_classes, 4):
+            loss_bin += criterion(outputs[:,k], labels[:,k])
+            loss_door += criterion(outputs[:,k+1], labels[:,k+1])
+            loss_pos += criterion(outputs[:,k+2:k+4], labels[:,k+2:k+4])
+            dist_door += mean_absolute_error(outputs.cpu().detach().numpy()[:,k+1], labels.cpu().detach().numpy()[:,k+1])
+            dist_pos += 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,k+2]*224, labels.cpu().detach().numpy()[:,k+2]*224)+\
+                                    0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,k+3]*224, labels.cpu().detach().numpy()[:,k+3]*224)
+        loss_bin /= num_factors
+        loss_door /= num_factors
+        loss_pos /= num_factors
+        dist_door /= num_factors
+        dist_pos /= num_factors
+        loss += 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
         
         running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
         running_loss["door_mse"] += loss_door.item() * inputs.size(0)
@@ -265,16 +275,25 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
                     outputs = delete_false_train(labels, outputs)
-                    loss_bin = criterion(outputs[:,0], labels[:,0])
-                    loss_door = criterion(outputs[:,1], labels[:,1])
-                    loss_pos = criterion(outputs[:,2:], labels[:,2:])
-                    if epoch < 20:
-                        loss = 0.1*loss_bin + 0.3*loss_door + 0.6*loss_pos
-                    else:
-                        loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
-                    dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1], labels.cpu().detach().numpy()[:,1])
-                    dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2]*224, labels.cpu().detach().numpy()[:,2]*224)+\
-                                            0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3]*224, labels.cpu().detach().numpy()[:,3]*224)
+
+                    loss_bin = 0
+                    loss_door = 0
+                    loss_pos = 0
+                    dist_door = 0
+                    dist_pos = 0
+                    for k in range(num_classes, 4):
+                        loss_bin += criterion(outputs[:,k], labels[:,k])
+                        loss_door += criterion(outputs[:,k+1], labels[:,k+1])
+                        loss_pos += criterion(outputs[:,k+2:k+4], labels[:,k+2:k+4])
+                        dist_door += mean_absolute_error(outputs.cpu().detach().numpy()[:,k+1], labels.cpu().detach().numpy()[:,k+1])
+                        dist_pos += 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,k+2]*224, labels.cpu().detach().numpy()[:,k+2]*224)+\
+                                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,k+3]*224, labels.cpu().detach().numpy()[:,k+3]*224)
+                    loss_bin /= num_factors
+                    loss_door /= num_factors
+                    loss_pos /= num_factors
+                    dist_door /= num_factors
+                    dist_pos /= num_factors
+                    loss += 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
 
                     # print("--step {}: total loss: {}, loss_bin: {}, loss_door: {}, loss_pos: {}".format(i, loss, loss_bin, loss_door, loss_pos))
                     # backward + optimize only if in training phase
@@ -397,8 +416,13 @@ class myDataset(torch.utils.data.Dataset):
 
     def load_gt(self, dic, name):
         ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
-        bin, x, y = dic[name]
-        return torch.FloatTensor([bin, int(fl)/data_range if x!= None else 0, x if x!= None else 0, y if x!= None else 0])
+        if part_name == "fl":
+            bin, x, y = dic[name]
+            return torch.FloatTensor([bin, abs(int(fl))/data_range if x!= None else 0, x if x!= None else 0, y if x!= None else 0])
+        elif part_name == "all":
+            fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  dic[name]
+            return torch.FloatTensor([fl_bin, abs(int(fl))/data_range if fl_x!= None else 0, fl_x if fl_x!= None else 0, fl_y if fl_x!= None else 0 \
+                                    fr_bin, abs(int(fr))/data_range if fr_x!= None else 0, fr_x if fr_x!= None else 0, fr_y if fr_x!= None else 0 \])
 
 
 # Detect if we have a GPU available
@@ -470,7 +494,7 @@ if command == "test":
     model_ft.eval()
 
     testsets = myDataset(dataSource=test_dir, gtSource=test_gt_dir, mode='test')
-    ## original testset
+    # # original testset
     # random_list = range(num_images)
     # test_id = random.sample(random_list, 2880)
     # testsets = myDataset(dataSource=train_dir, gtSource=train_gt_dir, mode='test_baseline', test_id=test_id)

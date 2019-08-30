@@ -39,19 +39,19 @@ print("Torchvision Version: ",torchvision.__version__)
 command = "train"
 
 # Add crop images to train set
-add_crop = True
+add_crop = False
 
 # Dataset settings
 num_images = 97200
-sample_iter = 2400
+sample_iter = 1200
 test_ratio = 0.1
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
 model_name = "resnet"
-part_name = "fl"
+part_name = "all"
 
 # Number of classes in the dataset
-num_classes = 1
+num_classes = 5
 
 # Batch size for training (change depending on how much memory you have)
 batch_size = 64
@@ -64,19 +64,19 @@ num_epochs = 100
 feature_extract = False
 
 # Data range
-data_range = -60
+data_range = 60
 
 # Dir settings
-train_dir = 'datasets/preset_car_data/'
+train_dir = 'datasets/train/preset_car_data/'
 if add_crop == False:
     crop_dir = None
 else:
     crop_dir = 'datasets/preset_car_crop/'
-test_dir = 'datasets/preset_test_{}/'.format(part_name)
-model_dir = 'params/crop/{}_ft_{}.pkl'.format(model_name, part_name)
-plot_dir = 'plots/crop/{}_ft_{}_same.jpg'.format(model_name, part_name)
-output_dir = 'outputs/crop/{}_ft_{}_same.txt'.format(model_name, part_name)
-html_dir = "htmls/crop/{}_ft_{}_same.txt".format(model_name, part_name)
+test_dir = 'datasets/all_test/preset_test_random/'.format(part_name)
+model_dir = 'params/sigmoid/{}_ft_{}.pkl'.format(model_name, part_name)
+plot_dir = 'plots/sigmoid/{}_ft_{}.jpg'.format(model_name, part_name)
+output_dir = 'outputs/sigmoid/{}_ft_{}.txt'.format(model_name, part_name)
+html_dir = "htmls/sigmoid/{}_ft_{}.txt".format(model_name, part_name)
 
 print("-------------------------------------")
 print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}\nmodel:{}".format(model_name, num_classes, batch_size, num_epochs, train_dir, test_dir, model_dir))
@@ -255,12 +255,34 @@ class myDataset(torch.utils.data.Dataset):
         if mode == 'train':
             print("Start sampling...")
             for i in tqdm(range(sample_iter)):
-                fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
-                for file in os.listdir(self.dir_img):
-                    if file[-3:] == "png":
-                        type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
-                        if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                            name_data.append(file[:-4])
+                if part_name == "fl":
+                    fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
+                    for file in os.listdir(self.dir_img):
+                        if file[-3:] == "png":
+                            type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
+                            if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                name_data.append(file[:-4])
+                elif part_name == "all":
+                    for i in range(5):
+                        fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
+                        for file in os.listdir(self.dir_img):
+                            if file[-3:] == "png":
+                                type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
+                                if i == 0:# sample for fl
+                                    if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                        name_data.append(file[:-4])
+                                elif i == 1:# sample for fr
+                                    if fl == fl_spl and bl == bl_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                        name_data.append(file[:-4])
+                                elif i == 2:# sample for bl
+                                    if fl == fl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                        name_data.append(file[:-4])
+                                elif i == 3:# sample for br
+                                    if fl == fl_spl and fr == fr_spl and bl == bl_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                        name_data.append(file[:-4])
+                                elif i == 4:# sample for trunk
+                                    if fl == fl_spl and fr == fr_spl and bl == bl_spl and br == br_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                        name_data.append(file[:-4])
             if self.dir_crop:
                 crop_name = self.load_crops(self.dir_crop)
                 name_data += crop_name
@@ -289,7 +311,20 @@ class myDataset(torch.utils.data.Dataset):
 
     def load_gt(self, name):
         ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
-        return torch.FloatTensor([int(fl)/data_range])
+        if part_name == "all":
+            return torch.FloatTensor([abs(int(fl))/data_range, abs(int(fr))/data_range, abs(int(bl))/data_range, abs(int(br))/data_range, abs(int(trunk))/data_range])
+        elif part_name == "fl":
+            return torch.FloatTensor([abs(int(fl))/data_range])
+        elif part_name == "fr":
+            return torch.FloatTensor([abs(int(fr))/data_range])
+        elif part_name == "bl":
+            return torch.FloatTensor([abs(int(bl))/data_range])
+        elif part_name == "br":
+            return torch.FloatTensor([abs(int(br))/data_range])
+        elif part_name == "trunk":
+            return torch.FloatTensor([abs(int(trunk))/data_range])
+        else:
+            print("part name error in loading gt!!!")
 
 # Detect if we have a GPU available
 device = torch.device("cuda:0,1,2,3" if torch.cuda.is_available() else "cpu")

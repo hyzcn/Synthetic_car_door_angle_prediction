@@ -4,5 +4,6 @@ params/
 nets/
 seg_dict/
 gt_dict/
+seg_vis/
 
 .pkl

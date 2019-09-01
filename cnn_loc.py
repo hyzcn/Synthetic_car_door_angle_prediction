@@ -23,7 +23,7 @@ from sklearn.metrics import mean_absolute_error
 from utils.seg_dict_save import *
 from model import *
 import re
-from utils.random_sample import sample_data
+from utils.random_sample import *
 try:
     from torch.hub import load_state_dict_from_url
 except ImportError:
@@ -42,7 +42,7 @@ add_crop = False
 
 # Dataset settings
 num_images = 97200
-sample_iter = 1200
+sample_iter = 600
 test_ratio = 0.1
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
@@ -274,7 +274,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                     dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)+\
                                             0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*224, labels.cpu().detach().numpy()[:,3::4]*224)
 
-                    if epoch < 20:
+                    if epoch < 10:
                         loss = 0.1*loss_bin + 0.3*loss_door + 0.6*loss_pos
                     else:
                         loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
@@ -320,8 +320,8 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 val_pos_mae.append(epoch_dist_pos)
 
             # deep copy the model
-            if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
-                best_loss = epoch_loss
+            if phase == 'val' and (epoch == 0 or epoch_dist_door<best_loss):
+                best_loss = epoch_dist_door
                 best_model_wts = copy.deepcopy(model.state_dict())
                 torch.save(model.module.state_dict(), model_dir)
         
@@ -367,37 +367,27 @@ class myDataset(torch.utils.data.Dataset):
     
     def load_names(self, dir, mode, test_id=None):
         name_data = []
+        train_params = {
+            "mesh_id":['suv', 'hybrid', 'hatchback', 'sedan2door', 'sedan4door'],
+            "fl":[x for x in range(-40, 1, 20)],
+            "fr":[x for x in range(0, 41, 20)],
+            "bl":[x for x in range(-40, 1, 20)],
+            "br":[x for x in range(0, 41, 20)],
+            "trunk":[x for x in range(0, 41, 20)],
+            "az":[x for x in range(0, 361, 40)],
+            "el":[x for x in range(20, 81, 20)],
+            "dist":[400, 450],
+        }
         if mode == 'train':
             print("Start sampling...")
             for i in tqdm(range(sample_iter)):
                 if part_name == "fl":
-                    fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
-                    for file in os.listdir(dir):
-                        if file[-3:] == "png":
-                            ins, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
-                            if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                name_data.append(file[:-4])
+                    sample_names = get_samples(train_params, 0)
+                    name_data += sample_names
                 elif part_name == "all":
                     for i in range(num_factors):
-                        fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
-                        for file in os.listdir(self.dir_img):
-                            if file[-3:] == "png":
-                                type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
-                                if i == 0:# sample for fl
-                                    if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                        name_data.append(file[:-4])
-                                elif i == 1:# sample for fr
-                                    if fl == fl_spl and bl == bl_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                        name_data.append(file[:-4])
-                                elif i == 2:# sample for bl
-                                    if fl == fl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                        name_data.append(file[:-4])
-                                elif i == 3:# sample for br
-                                    if fl == fl_spl and fr == fr_spl and bl == bl_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                        name_data.append(file[:-4])
-                                elif i == 4:# sample for trunk
-                                    if fl == fl_spl and fr == fr_spl and bl == bl_spl and br == br_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                        name_data.append(file[:-4])
+                        sample_names = get_samples(train_params, i)
+                        name_data += sample_names
             if self.dir_crop:
                 crop_name = self.load_crops(self.dir_crop)
                 name_data += crop_name
@@ -412,6 +402,7 @@ class myDataset(torch.utils.data.Dataset):
                      if n in test_id:
                         name_data.append(file[:-4])
                 n += 1
+
         return name_data
 
     def load_image(self, dir):

@@ -22,7 +22,7 @@ from tqdm import tqdm
 from sklearn.metrics import mean_absolute_error
 from model import *
 import re
-from utils.random_sample import sample_data
+from utils.random_sample import *
 try:
     from torch.hub import load_state_dict_from_url
 except ImportError:
@@ -36,14 +36,14 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "test"
+command = "train"
 
 # Add crop images to train set
 add_crop = True
 
 # Dataset settings
 num_images = 97200
-sample_iter = 1200
+sample_iter = 600
 test_ratio = 0.1
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
@@ -72,7 +72,7 @@ if add_crop == False:
     crop_dir = None
 else:
     crop_dir = 'datasets/train/preset_car_crop/'
-test_dir = 'datasets/all_test/preset_all_same/'.format(part_name)
+test_dir = 'datasets/all_test/preset_test_random/'.format(part_name)
 model_dir = 'params/crop/{}_ft_{}.pkl'.format(model_name, part_name)
 plot_dir = 'plots/crop/{}_ft_{}.jpg'.format(model_name, part_name)
 output_dir = 'outputs/crop/{}_ft_{}.txt'.format(model_name, part_name)
@@ -252,37 +252,27 @@ class myDataset(torch.utils.data.Dataset):
 
     def load_names(self, mode, test_id=None):
         name_data = []
+        train_params = {
+            "mesh_id":['suv', 'hybrid', 'hatchback', 'sedan2door', 'sedan4door'],
+            "fl":[x for x in range(-40, 1, 20)],
+            "fr":[x for x in range(0, 41, 20)],
+            "bl":[x for x in range(-40, 1, 20)],
+            "br":[x for x in range(0, 41, 20)],
+            "trunk":[x for x in range(0, 41, 20)],
+            "az":[x for x in range(0, 361, 40)],
+            "el":[x for x in range(20, 81, 20)],
+            "dist":[400, 450],
+        }
         if mode == 'train':
             print("Start sampling...")
             for i in tqdm(range(sample_iter)):
                 if part_name == "fl":
-                    fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
-                    for file in os.listdir(self.dir_img):
-                        if file[-3:] == "png":
-                            type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
-                            if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                name_data.append(file[:-4])
+                    sample_names = get_samples(train_params, 0)
+                    name_data += sample_names
                 elif part_name == "all":
                     for i in range(5):
-                        fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
-                        for file in os.listdir(self.dir_img):
-                            if file[-3:] == "png":
-                                type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
-                                if i == 0:# sample for fl
-                                    if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                        name_data.append(file[:-4])
-                                elif i == 1:# sample for fr
-                                    if fl == fl_spl and bl == bl_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                        name_data.append(file[:-4])
-                                elif i == 2:# sample for bl
-                                    if fl == fl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                        name_data.append(file[:-4])
-                                elif i == 3:# sample for br
-                                    if fl == fl_spl and fr == fr_spl and bl == bl_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                        name_data.append(file[:-4])
-                                elif i == 4:# sample for trunk
-                                    if fl == fl_spl and fr == fr_spl and bl == bl_spl and br == br_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                                        name_data.append(file[:-4])
+                        sample_names = get_samples(train_params, i)
+                        name_data += sample_names
             if self.dir_crop:
                 crop_name = self.load_crops(self.dir_crop)
                 name_data += crop_name

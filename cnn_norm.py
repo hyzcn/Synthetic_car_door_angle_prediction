@@ -54,7 +54,7 @@ data_range = 60
 
 # Dir settings
 data_dir = 'datasets/train/preset_car_data/'
-test_dir = 'datasets/all_test/preset_all_same/'.format(part_name)
+test_dir = 'datasets/all_test/preset_all_random/'.format(part_name)
 model_dir = 'params/{}_ft_{}_norm.pkl'.format(model_name, part_name)
 plot_dir = 'plots/{}_ft_{}_norm.jpg'.format(model_name, part_name)
 output_dir = 'outputs/{}_ft_{}_norm.txt'.format(model_name, part_name)

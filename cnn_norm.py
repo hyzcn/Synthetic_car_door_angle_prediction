@@ -18,6 +18,7 @@ from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error
 import torch.utils.data as Data
+from tqdm import tqdm
 import random
 from model import *
 print("PyTorch Version: ",torch.__version__)
@@ -28,7 +29,7 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "train"
+command = "test"
 
 # Dataset settings
 num_images = 97200
@@ -53,7 +54,7 @@ data_range = 60
 
 # Dir settings
 data_dir = 'datasets/train/preset_car_data/'
-test_dir = 'datasets/all_test/preset_test_random/'.format(part_name)
+test_dir = 'datasets/all_test/preset_all_same/'.format(part_name)
 model_dir = 'params/{}_ft_{}_norm.pkl'.format(model_name, part_name)
 plot_dir = 'plots/{}_ft_{}_norm.jpg'.format(model_name, part_name)
 output_dir = 'outputs/{}_ft_{}_norm.txt'.format(model_name, part_name)
@@ -103,7 +104,7 @@ def test_model(model, dataloaders, criterion):
     
     running_loss = 0
     running_dist = 0
-    for names, inputs, labels in dataloaders:
+    for names, inputs, labels in tqdm(dataloaders):
         inputs = inputs.to(device)
         labels = labels.to(device)
         
@@ -147,7 +148,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             running_loss = 0.0
             running_dist = 0.0
             # Iterate over data.
-            for i, (name, inputs, labels) in enumerate(dataloaders[phase]):
+            for i, (name, inputs, labels) in tqdm(enumerate(dataloaders[phase])):
                 #if epoch == 0:
                 #    print(name)
                 inputs = inputs.to(device)

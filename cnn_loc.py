@@ -37,17 +37,17 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "test"
-add_crop = True
+command = "train"
+add_crop = False
 
 # Dataset settings
 num_images = 97200
-sample_iter = 2400
+sample_iter = 1200
 test_ratio = 0.1
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
 model_name = "resnet"
-part_name = "fl"
+part_name = "all"
 
 # Number of classes in the dataset
 num_factors = 5
@@ -68,18 +68,18 @@ data_range = 60
 
 # Dir settings
 ## Train
-train_dir = 'datasets/preset_car_data/'
-train_gt_dir = 'gt_dict/preset_car_gt.npy'.format(part_name)
+train_dir = 'datasets/train/preset_car_data/'
+train_gt_dir = 'gt_dict/preset_car_{}_gt.npy'.format(part_name)
 ## Crop
 if add_crop == False:
     crop_dir = None
     crop_gt_dir = None
 else:
-    crop_dir = 'datasets/preset_car_crop/'
-    crop_gt_dir = 'gt_dict/preset_car_crop_gt.npy'
+    crop_dir = 'datasets/train/preset_car_crop/'
+    crop_gt_dir = 'gt_dict/preset_car_crop_{}_gt.npy'.format(part_name)
 ## Test
-test_dir = 'datasets/preset_test_{}/'.format(part_name)
-test_gt_dir = 'gt_dict/preset_test_{}_gt.npy'.format(part_name)
+test_dir = 'datasets/all_test/preset_test_random/'.format(part_name)
+test_gt_dir = 'gt_dict/preset_test_random_{}_gt.npy'.format(part_name)
 ## Model
 model_dir = 'params/location/{}_ft_{}_0.3_0.6_64.pkl'.format(model_name, part_name)
 plot_dir = 'plots/location/'
@@ -200,24 +200,15 @@ def test_model(model, dataloaders, criterion):
         
         outputs = model(inputs)
         outputs = delete_false_test(labels, outputs)
-        loss_bin = 0
-        loss_door = 0
-        loss_pos = 0
-        dist_door = 0
-        dist_pos = 0
-        for k in range(num_classes, 4):
-            loss_bin += criterion(outputs[:,k], labels[:,k])
-            loss_door += criterion(outputs[:,k+1], labels[:,k+1])
-            loss_pos += criterion(outputs[:,k+2:k+4], labels[:,k+2:k+4])
-            dist_door += mean_absolute_error(outputs.cpu().detach().numpy()[:,k+1], labels.cpu().detach().numpy()[:,k+1])
-            dist_pos += 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,k+2]*224, labels.cpu().detach().numpy()[:,k+2]*224)+\
-                                    0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,k+3]*224, labels.cpu().detach().numpy()[:,k+3]*224)
-        loss_bin /= num_factors
-        loss_door /= num_factors
-        loss_pos /= num_factors
-        dist_door /= num_factors
-        dist_pos /= num_factors
-        loss += 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
+        outputs = model(inputs)
+        outputs = delete_false_test(labels, outputs)
+        loss_bin = criterion(outputs[:,::4], labels[:,::4])
+        loss_door = criterion(outputs[:,1::4], labels[:,1::4])
+        loss_pos = (criterion(outputs[:,2::4], labels[:,2::4])+criterion(outputs[:,3::4], labels[:,3::4]))/2
+        loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
+        dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4], labels.cpu().detach().numpy()[:,1::4])
+        dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)+\
+                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*224, labels.cpu().detach().numpy()[:,3::4]*224)
         
         running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
         running_loss["door_mse"] += loss_door.item() * inputs.size(0)
@@ -276,24 +267,17 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                     outputs = model(inputs)
                     outputs = delete_false_train(labels, outputs)
 
-                    loss_bin = 0
-                    loss_door = 0
-                    loss_pos = 0
-                    dist_door = 0
-                    dist_pos = 0
-                    for k in range(num_classes, 4):
-                        loss_bin += criterion(outputs[:,k], labels[:,k])
-                        loss_door += criterion(outputs[:,k+1], labels[:,k+1])
-                        loss_pos += criterion(outputs[:,k+2:k+4], labels[:,k+2:k+4])
-                        dist_door += mean_absolute_error(outputs.cpu().detach().numpy()[:,k+1], labels.cpu().detach().numpy()[:,k+1])
-                        dist_pos += 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,k+2]*224, labels.cpu().detach().numpy()[:,k+2]*224)+\
-                                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,k+3]*224, labels.cpu().detach().numpy()[:,k+3]*224)
-                    loss_bin /= num_factors
-                    loss_door /= num_factors
-                    loss_pos /= num_factors
-                    dist_door /= num_factors
-                    dist_pos /= num_factors
-                    loss += 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
+                    loss_bin = criterion(outputs[:,::4], labels[:,::4])
+                    loss_door = criterion(outputs[:,1::4], labels[:,1::4])
+                    loss_pos = (criterion(outputs[:,2::4], labels[:,2::4])+criterion(outputs[:,3::4], labels[:,3::4]))/2
+                    dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4], labels.cpu().detach().numpy()[:,1::4])
+                    dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)+\
+                                            0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*224, labels.cpu().detach().numpy()[:,3::4]*224)
+
+                    if epoch < 20:
+                        loss = 0.1*loss_bin + 0.3*loss_door + 0.6*loss_pos
+                    else:
+                        loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
 
                     # print("--step {}: total loss: {}, loss_bin: {}, loss_door: {}, loss_pos: {}".format(i, loss, loss_bin, loss_door, loss_pos))
                     # backward + optimize only if in training phase
@@ -306,8 +290,8 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 running_loss["door_mse"] += loss_door.item() * inputs.size(0)
                 running_loss["pos_mse"] += loss_pos.item() * inputs.size(0)
                 running_loss["total_mse"] += loss.item() * inputs.size(0)
-                running_loss["door_mae"] += dist_door.item() * inputs.size(0)
-                running_loss["pos_mae"] += dist_pos.item() * inputs.size(0)
+                running_loss["door_mae"] += dist_door * inputs.size(0)
+                running_loss["pos_mae"] += dist_pos * inputs.size(0)
 
             epoch_loss_bin = running_loss["bin_mse"] / len(dataloaders[phase].dataset)
             epoch_loss_door = running_loss["door_mse"] / len(dataloaders[phase].dataset)
@@ -359,6 +343,9 @@ class myDataset(torch.utils.data.Dataset):
         if cropSource:
             self.dir_crop = cropSource
             self.gt_crop = np.load(cropGt).item()
+        else:
+            self.dir_crop = None
+            self.gt_crop = None
         self.names = self.load_names(dataSource, mode, test_id)
         print("{} data loaded: {} images".format(mode, len(self.names)))
 
@@ -383,12 +370,34 @@ class myDataset(torch.utils.data.Dataset):
         if mode == 'train':
             print("Start sampling...")
             for i in tqdm(range(sample_iter)):
-                fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
-                for file in os.listdir(dir):
-                    if file[-3:] == "png":
-                        ins, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
-                        if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
-                            name_data.append(file[:-4])
+                if part_name == "fl":
+                    fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
+                    for file in os.listdir(dir):
+                        if file[-3:] == "png":
+                            ins, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
+                            if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                name_data.append(file[:-4])
+                elif part_name == "all":
+                    for i in range(num_factors):
+                        fl_spl, fr_spl, bl_spl, br_spl, trunk_spl, az_spl, el_spl, dist_spl = sample_data()
+                        for file in os.listdir(self.dir_img):
+                            if file[-3:] == "png":
+                                type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
+                                if i == 0:# sample for fl
+                                    if bl == bl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                        name_data.append(file[:-4])
+                                elif i == 1:# sample for fr
+                                    if fl == fl_spl and bl == bl_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                        name_data.append(file[:-4])
+                                elif i == 2:# sample for bl
+                                    if fl == fl_spl and fr == fr_spl and br == br_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                        name_data.append(file[:-4])
+                                elif i == 3:# sample for br
+                                    if fl == fl_spl and fr == fr_spl and bl == bl_spl and trunk == trunk_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                        name_data.append(file[:-4])
+                                elif i == 4:# sample for trunk
+                                    if fl == fl_spl and fr == fr_spl and bl == bl_spl and br == br_spl and az == az_spl and el == el_spl and dist == dist_spl:
+                                        name_data.append(file[:-4])
             if self.dir_crop:
                 crop_name = self.load_crops(self.dir_crop)
                 name_data += crop_name
@@ -421,8 +430,11 @@ class myDataset(torch.utils.data.Dataset):
             return torch.FloatTensor([bin, abs(int(fl))/data_range if x!= None else 0, x if x!= None else 0, y if x!= None else 0])
         elif part_name == "all":
             fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  dic[name]
-            return torch.FloatTensor([fl_bin, abs(int(fl))/data_range if fl_x!= None else 0, fl_x if fl_x!= None else 0, fl_y if fl_x!= None else 0 \
-                                    fr_bin, abs(int(fr))/data_range if fr_x!= None else 0, fr_x if fr_x!= None else 0, fr_y if fr_x!= None else 0 \])
+            return torch.FloatTensor([fl_bin, abs(int(fl))/data_range, fl_x, fl_y, \
+                                    fr_bin, abs(int(fr))/data_range, fr_x, fr_y, \
+                                    bl_bin, abs(int(bl))/data_range, bl_x, bl_y, \
+                                    br_bin, abs(int(br))/data_range, br_x, br_y, \
+                                    trunk_bin, abs(int(trunk))/data_range, trunk_x, trunk_y])
 
 
 # Detect if we have a GPU available

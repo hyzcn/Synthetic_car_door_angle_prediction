@@ -36,10 +36,10 @@ print("Torchvision Version: ",torchvision.__version__)
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "train"
+command = "test"
 
 # Add crop images to train set
-add_crop = False
+add_crop = True
 
 # Dataset settings
 num_images = 97200
@@ -71,12 +71,12 @@ train_dir = 'datasets/train/preset_car_data/'
 if add_crop == False:
     crop_dir = None
 else:
-    crop_dir = 'datasets/preset_car_crop/'
-test_dir = 'datasets/all_test/preset_test_random/'.format(part_name)
-model_dir = 'params/sigmoid/{}_ft_{}.pkl'.format(model_name, part_name)
-plot_dir = 'plots/sigmoid/{}_ft_{}.jpg'.format(model_name, part_name)
-output_dir = 'outputs/sigmoid/{}_ft_{}.txt'.format(model_name, part_name)
-html_dir = "htmls/sigmoid/{}_ft_{}.txt".format(model_name, part_name)
+    crop_dir = 'datasets/train/preset_car_crop/'
+test_dir = 'datasets/all_test/preset_all_same/'.format(part_name)
+model_dir = 'params/crop/{}_ft_{}.pkl'.format(model_name, part_name)
+plot_dir = 'plots/crop/{}_ft_{}.jpg'.format(model_name, part_name)
+output_dir = 'outputs/crop/{}_ft_{}.txt'.format(model_name, part_name)
+html_dir = "htmls/crop/{}_ft_{}.txt".format(model_name, part_name)
 
 print("-------------------------------------")
 print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}\nmodel:{}".format(model_name, num_classes, batch_size, num_epochs, train_dir, test_dir, model_dir))
@@ -127,7 +127,7 @@ def test_model(model, dataloaders, criterion):
     
     running_loss = 0
     running_dist = 0
-    for names, inputs, labels in dataloaders:
+    for names, inputs, labels in tqdm(dataloaders):
         inputs = inputs.to(device)
         labels = labels.to(device)
         
@@ -157,7 +157,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
 
     best_model_wts = copy.deepcopy(model.state_dict())
 
-    for epoch in tqdm(range(num_epochs)):
+    for epoch in range(num_epochs):
         print('Epoch {}/{}'.format(epoch, num_epochs - 1))
         print('-' * 10)
         x_list.append(epoch)
@@ -174,7 +174,7 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
             running_dist = 0.0
 
             # Iterate over data.
-            for i, (name, inputs, labels) in enumerate(dataloaders[phase]):
+            for i, (name, inputs, labels) in tqdm(enumerate(dataloaders[phase])):
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
@@ -394,10 +394,10 @@ if command == "test":
 
     model_ft.eval()
 
-    # testsets = myDataset(test_dir, 'test')
-    random_list = range(num_images)
-    test_id = random.sample(random_list, 2880)
-    testsets = myDataset(train_dir, 'test_baseline', test_id)
+    testsets = myDataset(test_dir, 'test')
+    # random_list = range(num_images)
+    # test_id = random.sample(random_list, 2880)
+    # testsets = myDataset(train_dir, 'test_baseline', test_id)
 
 # Build testset
 testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=4)

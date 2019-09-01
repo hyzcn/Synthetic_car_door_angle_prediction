@@ -13,7 +13,7 @@ from seg_dict_save import *
 
 
 # Configurations
-part_name = "br"
+part_name = "bl"
 seg_dir = "../datasets/vis_dis/preset_vis_dis_{}/".format(part_name)
 seg_dict_dir = "../seg_dict/vis_dis_{}_seg.npy".format(part_name)
 vis_save_dir = "../vis_dis/vis_dis_{}.npy".format(part_name)
@@ -35,27 +35,28 @@ def create_vis_dis(seg_mask_dict, vis_save_dir):
     vis_dict = {}
     print("Calculating visible range...")
     for name, mask in tqdm(seg_mask_dict.items()):
-        type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', name)
-        view = "{}_{}".format(az, el)
-        area = sum(sum(mask))
-        if part_name == "fl":
-            degree = abs(int(fl))
-        elif part_name == "fr":
-            degree = abs(int(fr))
-        elif part_name == "bl":
-            degree = abs(int(bl))
-        elif part_name == "br":
-            degree = abs(int(br))
-        elif part_name == "trunk":
-            degree = abs(int(trunk))
-        else:
-            print("part name error!!!")
-        # print(view, degree, area)
-        if view not in vis_dict:
-            vis_dict[view] = [0, vis_max]
-        if area < vis_thresh: # invisible
-            if degree > vis_dict[view][0]:
-                vis_dict[view] = [degree, vis_max]
+        if name[:3] == "suv":
+            type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', name)
+            view = "{}_{}".format(az, el)
+            area = sum(sum(mask))
+            if part_name == "fl":
+                degree = abs(int(fl))
+            elif part_name == "fr":
+                degree = abs(int(fr))
+            elif part_name == "bl":
+                degree = abs(int(bl))
+            elif part_name == "br":
+                degree = abs(int(br))
+            elif part_name == "trunk":
+                degree = abs(int(trunk))
+            else:
+                print("part name error!!!")
+            # print(view, degree, area)
+            if view not in vis_dict:
+                vis_dict[view] = [0, vis_max]
+            if area < vis_thresh: # invisible
+                if degree > vis_dict[view][0]:
+                    vis_dict[view] = [degree, vis_max]
 
     bin_vis_dis(vis_dict)
     np.save(vis_save_dir, vis_dict)

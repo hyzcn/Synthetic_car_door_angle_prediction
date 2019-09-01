@@ -3,7 +3,7 @@ import numpy as np
 from tqdm import tqdm
 
 seg_dir = "../seg_dict/vis_dis_fr_seg.npy"
-save_dir = "../seg_vis/"
+save_dir = "seg_vis/"
 def show_seg(seg_dir, save_dir):
     print("Reading seg dictionary...")
     seg_dict = np.load(seg_dir).item()

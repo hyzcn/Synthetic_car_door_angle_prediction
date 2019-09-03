@@ -32,13 +32,16 @@ except ImportError:
 print("PyTorch Version: ",torch.__version__)
 print("Torchvision Version: ",torchvision.__version__)
 
+os.environ['QT_QPA_PLATFORM']='offscreen'
+
 # Top level data directory. Here we assume the format of the directory conforms
 #   to the ImageFolder structure
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
 command = "train"
-add_crop = False
+add_crop = True
+add_pre = True
 
 # Dataset settings
 num_images = 97200
@@ -50,8 +53,14 @@ model_name = "resnet"
 part_name = "all"
 
 # Number of classes in the dataset
-num_factors = 5
-num_classes = (1+3)*num_factors
+if part_name == "fl":
+    num_factors = 1
+elif part_name == "all":
+    num_factors = 5
+if add_pre:
+    num_classes = (1+3)*num_factors
+else:
+    num_classes = (1+2)*num_factors
 
 # Batch size for training (change depending on how much memory you have)
 batch_size = 64
@@ -81,10 +90,10 @@ else:
 test_dir = 'datasets/all_test/preset_test_random/'.format(part_name)
 test_gt_dir = 'gt_dict/preset_test_random_{}_gt.npy'.format(part_name)
 ## Model
-model_dir = 'params/location/{}_ft_{}_0.3_0.6_64.pkl'.format(model_name, part_name)
-plot_dir = 'plots/location/'
-output_dir = 'outputs/location/{}_ft_{}_same.txt'.format(model_name, part_name)
-html_dir = "htmls/location/{}_ft_{}_same.txt".format(model_name, part_name)
+model_dir = 'params/crop_loc_pre/{}_ft_{}_0.3_0.6_64.pkl'.format(model_name, part_name)
+plot_dir = 'plots/crop_loc_pre/'
+output_dir = 'outputs/crop_loc_pre/{}_ft_{}_same.txt'.format(model_name, part_name)
+html_dir = "htmls/crop_loc_pre/{}_ft_{}_same.txt".format(model_name, part_name)
 
 
 print("-------------------------------------")
@@ -157,19 +166,27 @@ def draw_plot():
 
     plt.savefig(plot_dir+"{}_ft_{}_mae_0.3_0.6_64.jpg".format(model_name, part_name))
 
-def delete_false_train(labels, outputs):
+def delete_pre_train(labels, outputs):
     for i in range(len(labels)):
-        for j in range(num_classes,4):
+        for j in range(0,num_classes,4):
             if labels[i][j] == False:
                 outputs[i][j+1:j+4] = labels[i][j+1:j+4]
 
     return outputs
 
-def delete_false_test(labels, outputs):
+def delete_pre_test(labels, outputs):
     for i in range(len(outputs)):
-        for j in range(num_classes,4):
+        for j in range(0,num_classes,4):
             if outputs[i][j].data < 0.5 and labels[i][j] == False:
                 outputs[i][j+1:j+4] = labels[i][j+1:j+4]
+
+    return outputs
+
+def delete_loc_false(labels, outputs):
+    for i in range(len(labels)):
+        for j in range(0,num_classes,4):
+            if labels[i][j+1] == 0 and labels[i][j+2] == 0:
+                outputs[i] = labels[i]
 
     return outputs
 
@@ -199,18 +216,29 @@ def test_model(model, dataloaders, criterion):
         model.eval()
         
         outputs = model(inputs)
-        outputs = delete_false_test(labels, outputs)
-        outputs = model(inputs)
-        outputs = delete_false_test(labels, outputs)
-        loss_bin = criterion(outputs[:,::4], labels[:,::4])
-        loss_door = criterion(outputs[:,1::4], labels[:,1::4])
-        loss_pos = (criterion(outputs[:,2::4], labels[:,2::4])+criterion(outputs[:,3::4], labels[:,3::4]))/2
-        loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
-        dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4], labels.cpu().detach().numpy()[:,1::4])
-        dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)+\
-                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*224, labels.cpu().detach().numpy()[:,3::4]*224)
+        if add_pre:
+            outputs = delete_pre_test(labels, outputs)
+            loss_bin = criterion(outputs[:,::4], labels[:,::4])
+            loss_door = criterion(outputs[:,1::4], labels[:,1::4])
+            loss_pos = (criterion(outputs[:,2::4], labels[:,2::4])+criterion(outputs[:,3::4], labels[:,3::4]))/2
+            loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
+            dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4], labels.cpu().detach().numpy()[:,1::4])
+            dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)+\
+                                    0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*224, labels.cpu().detach().numpy()[:,3::4]*224)
+        else:
+            outputs = delete_loc_false(labels, outputs)
+            loss_bin = torch.FloatTensor(0)
+            loss_door = criterion(outputs[:,::4], labels[:,::4])
+            loss_pos = (criterion(outputs[:,1::4], labels[:,1::4])+criterion(outputs[:,2::4], labels[:,2::4]))/2
+            loss = 0.5*loss_door + 0.5*loss_pos
+            dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,::4], labels.cpu().detach().numpy()[:,::4])
+            dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4]*224, labels.cpu().detach().numpy()[:,1::4]*224)+\
+                                    0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)
         
-        running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
+        if add_pre:
+            running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
+        else:
+            running_loss["bin_mse"] = 0
         running_loss["door_mse"] += loss_door.item() * inputs.size(0)
         running_loss["pos_mse"] += loss_pos.item() * inputs.size(0)
         running_loss["total_mse"] += loss.item() * inputs.size(0)
@@ -265,19 +293,32 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
-                    outputs = delete_false_train(labels, outputs)
 
-                    loss_bin = criterion(outputs[:,::4], labels[:,::4])
-                    loss_door = criterion(outputs[:,1::4], labels[:,1::4])
-                    loss_pos = (criterion(outputs[:,2::4], labels[:,2::4])+criterion(outputs[:,3::4], labels[:,3::4]))/2
-                    dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4], labels.cpu().detach().numpy()[:,1::4])
-                    dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)+\
-                                            0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*224, labels.cpu().detach().numpy()[:,3::4]*224)
-
-                    if epoch < 10:
-                        loss = 0.1*loss_bin + 0.3*loss_door + 0.6*loss_pos
+                    if add_pre:
+                        outputs = delete_pre_train(labels, outputs)
+                        loss_bin = criterion(outputs[:,::4], labels[:,::4])
+                        loss_door = criterion(outputs[:,1::4], labels[:,1::4])
+                        loss_pos = (criterion(outputs[:,2::4], labels[:,2::4])+criterion(outputs[:,3::4], labels[:,3::4]))/2
+                        dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4], labels.cpu().detach().numpy()[:,1::4])
+                        dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)+\
+                                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*224, labels.cpu().detach().numpy()[:,3::4]*224)
+                        if epoch < 10:
+                            loss = 0.1*loss_bin + 0.3*loss_door + 0.6*loss_pos
+                        else:
+                            loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
                     else:
-                        loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
+                        outputs = delete_loc_false(labels, outputs)
+                        loss_bin = torch.FloatTensor(0)
+                        loss_door = criterion(outputs[:,::4], labels[:,::4])
+                        loss_pos = (criterion(outputs[:,1::4], labels[:,1::4])+criterion(outputs[:,2::4], labels[:,2::4]))/2
+                        dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,::4], labels.cpu().detach().numpy()[:,::4])
+                        dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4]*224, labels.cpu().detach().numpy()[:,1::4]*224)+\
+                                                0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)
+                        if epoch < 10:
+                            loss = 0.4*loss_door + 0.6*loss_pos
+                        else:
+                            loss = 0.6*loss_door + 0.4*loss_pos
+                    
 
                     # print("--step {}: total loss: {}, loss_bin: {}, loss_door: {}, loss_pos: {}".format(i, loss, loss_bin, loss_door, loss_pos))
                     # backward + optimize only if in training phase
@@ -286,7 +327,10 @@ def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_ince
                         optimizer.step()
 
                 # statistics
-                running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
+                if add_pre:
+                    running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
+                else:
+                    running_loss["bin_mse"] = 0
                 running_loss["door_mse"] += loss_door.item() * inputs.size(0)
                 running_loss["pos_mse"] += loss_pos.item() * inputs.size(0)
                 running_loss["total_mse"] += loss.item() * inputs.size(0)
@@ -418,14 +462,24 @@ class myDataset(torch.utils.data.Dataset):
         ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
         if part_name == "fl":
             bin, x, y = dic[name]
-            return torch.FloatTensor([bin, abs(int(fl))/data_range if x!= None else 0, x if x!= None else 0, y if x!= None else 0])
+            if add_pre:
+                return torch.FloatTensor([bin, abs(int(fl))/data_range if x!= None else 0, x if x!= None else 0, y if x!= None else 0])
+            else:
+                return torch.FloatTensor([abs(int(fl))/data_range if x!= None else 0, x if x!= None else 0, y if x!= None else 0])
         elif part_name == "all":
             fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  dic[name]
-            return torch.FloatTensor([fl_bin, abs(int(fl))/data_range, fl_x, fl_y, \
-                                    fr_bin, abs(int(fr))/data_range, fr_x, fr_y, \
-                                    bl_bin, abs(int(bl))/data_range, bl_x, bl_y, \
-                                    br_bin, abs(int(br))/data_range, br_x, br_y, \
-                                    trunk_bin, abs(int(trunk))/data_range, trunk_x, trunk_y])
+            if add_pre:
+                return torch.FloatTensor([fl_bin, abs(int(fl))/data_range, fl_x, fl_y, \
+                                        fr_bin, abs(int(fr))/data_range, fr_x, fr_y, \
+                                        bl_bin, abs(int(bl))/data_range, bl_x, bl_y, \
+                                        br_bin, abs(int(br))/data_range, br_x, br_y, \
+                                        trunk_bin, abs(int(trunk))/data_range, trunk_x, trunk_y])
+            else:
+                return torch.FloatTensor([abs(int(fl))/data_range, fl_x, fl_y, \
+                                        abs(int(fr))/data_range, fr_x, fr_y, \
+                                        abs(int(bl))/data_range, bl_x, bl_y, \
+                                        abs(int(br))/data_range, br_x, br_y, \
+                                        abs(int(trunk))/data_range, trunk_x, trunk_y])
 
 
 # Detect if we have a GPU available

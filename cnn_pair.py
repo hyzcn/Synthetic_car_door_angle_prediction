@@ -31,15 +31,17 @@ except ImportError:
 print("PyTorch Version: ",torch.__version__)
 print("Torchvision Version: ",torchvision.__version__)
 
+os.environ['QT_QPA_PLATFORM']='offscreen'
+
 # Top level data directory. Here we assume the format of the directory conforms
 #   to the ImageFolder structure
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "train"
+command = "test"
 
 # Add crop images to train set
-add_crop = True
+add_crop = False
 
 # Dataset settings
 num_images = 97200
@@ -72,7 +74,7 @@ if add_crop == False:
     crop_dir = None
 else:
     crop_dir = 'datasets/train/preset_car_crop/'
-test_dir = 'datasets/all_test/preset_test_random/'.format(part_name)
+test_dir = 'datasets/all_test/preset_all_random/'.format(part_name)
 model_dir = 'params/crop/{}_ft_{}.pkl'.format(model_name, part_name)
 plot_dir = 'plots/crop/{}_ft_{}.jpg'.format(model_name, part_name)
 output_dir = 'outputs/crop/{}_ft_{}.txt'.format(model_name, part_name)

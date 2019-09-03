@@ -24,6 +24,8 @@ from model import *
 print("PyTorch Version: ",torch.__version__)
 print("Torchvision Version: ",torchvision.__version__)
 
+os.environ['QT_QPA_PLATFORM']='offscreen'
+
 # Top level data directory. Here we assume the format of the directory conforms
 #   to the ImageFolder structure
 #data_dir = "./data/hymenoptera_data"
@@ -33,8 +35,8 @@ command = "test"
 
 # Dataset settings
 num_images = 97200
-train_num = 36000
-test_num = 2880
+train_num = 45000
+test_num = 9720
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
 model_name = "resnet"

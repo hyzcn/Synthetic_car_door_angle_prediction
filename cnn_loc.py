@@ -69,7 +69,7 @@ batch_size = 64
 num_epochs = 100
 
 # Flag for feature extracting. When False, we finetune the whole model,
-#   when True we only update the reshaped layer params
+# when True we only update the reshaped layer params
 feature_extract = False
 
 # Data range

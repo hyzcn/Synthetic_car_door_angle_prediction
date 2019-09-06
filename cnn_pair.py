@@ -75,10 +75,10 @@ if add_crop == False:
 else:
     crop_dir = 'datasets/train/preset_car_crop/'
 test_dir = 'datasets/all_test/preset_all_random/'.format(part_name)
-model_dir = 'params/crop/{}_ft_{}.pkl'.format(model_name, part_name)
-plot_dir = 'plots/crop/{}_ft_{}.jpg'.format(model_name, part_name)
-output_dir = 'outputs/crop/{}_ft_{}.txt'.format(model_name, part_name)
-html_dir = "htmls/crop/{}_ft_{}.txt".format(model_name, part_name)
+model_dir = 'params/sigmoid/{}_ft_{}.pkl'.format(model_name, part_name)
+plot_dir = 'plots/sigmoid/{}_ft_{}.jpg'.format(model_name, part_name)
+output_dir = 'outputs/sigmoid/{}_ft_{}.txt'.format(model_name, part_name)
+html_dir = "htmls/sigmoid/{}_ft_{}.txt".format(model_name, part_name)
 
 print("-------------------------------------")
 print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}\nmodel:{}".format(model_name, num_classes, batch_size, num_epochs, train_dir, test_dir, model_dir))
@@ -386,10 +386,10 @@ if command == "test":
 
     model_ft.eval()
 
-    testsets = myDataset(test_dir, 'test')
-    # random_list = range(num_images)
-    # test_id = random.sample(random_list, 2880)
-    # testsets = myDataset(train_dir, 'test_baseline', test_id)
+    # testsets = myDataset(test_dir, 'test')
+    random_list = range(num_images)
+    test_id = random.sample(random_list, 9720)
+    testsets = myDataset(train_dir, 'test_baseline', test_id)
 
 # Build testset
 testloader_dict = Data.DataLoader(testsets, batch_size=batch_size, shuffle=True, num_workers=4)

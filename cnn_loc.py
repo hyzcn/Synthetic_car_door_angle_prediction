@@ -39,7 +39,7 @@ os.environ['QT_QPA_PLATFORM']='offscreen'
 #data_dir = "./data/hymenoptera_data"
 
 # Train/Test mode
-command = "train"
+command = "test"
 add_crop = True
 add_pre = True
 
@@ -87,8 +87,8 @@ else:
     crop_dir = 'datasets/train/preset_car_crop/'
     crop_gt_dir = 'gt_dict/preset_car_crop_{}_gt.npy'.format(part_name)
 ## Test
-test_dir = 'datasets/all_test/preset_test_random/'.format(part_name)
-test_gt_dir = 'gt_dict/preset_test_random_{}_gt.npy'.format(part_name)
+test_dir = 'datasets/all_test/preset_all_random/'.format(part_name)
+test_gt_dir = 'gt_dict/preset_all_random_{}_gt.npy'.format(part_name)
 ## Model
 model_dir = 'params/crop_loc_pre/{}_ft_{}_0.3_0.6_64.pkl'.format(model_name, part_name)
 plot_dir = 'plots/crop_loc_pre/'
@@ -96,8 +96,17 @@ output_dir = 'outputs/crop_loc_pre/{}_ft_{}_same.txt'.format(model_name, part_na
 html_dir = "htmls/crop_loc_pre/{}_ft_{}_same.txt".format(model_name, part_name)
 
 
-print("-------------------------------------")
-print("Config:\nmodel:{}\nnum_classes:{}\nbatch size:{}\nepochs:{}\nsample set:{}\ntest set:{}\nmodel:{}".format(model_name, num_classes, batch_size, num_epochs, train_dir, test_dir, model_dir))
+print("-------------  Config  --------------")
+print("method: random sample + location + (crop) + (predictability)")
+print("mode: {}".format(command))
+print("net: {}".format(model_name))
+print("part name: {}".format(part_name))
+print("sample iter: {}".format(sample_iter))
+print("add crop: {}".format(add_crop))
+print("add predictability: {}".format(add_pre))
+print("train set: {}".format(train_dir))
+print("test set: {}".format(test_dir))
+print("model dir: {}".format(model_dir))
 print("-------------------------------------\n")
 
 x_list = []
@@ -114,7 +123,7 @@ val_door_mae = []
 train_pos_mae = []
 val_pos_mae = []
 
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 def draw_plot():
     # plot
@@ -167,26 +176,32 @@ def draw_plot():
     plt.savefig(plot_dir+"{}_ft_{}_mae_0.3_0.6_64.jpg".format(model_name, part_name))
 
 def delete_pre_train(labels, outputs):
-    for i in range(len(labels)):
-        for j in range(0,num_classes,4):
-            if labels[i][j] == False:
-                outputs[i][j+1:j+4] = labels[i][j+1:j+4]
+    x, y = np.where((labels.cpu()[:,::4]==False)==True)
+    y = y*4+1
+    outputs[x, y] = labels[x, y]
+    outputs[x, y+1] = labels[x, y+1]
+    outputs[x, y+2] = labels[x, y+2]
 
     return outputs
 
 def delete_pre_test(labels, outputs):
-    for i in range(len(outputs)):
-        for j in range(0,num_classes,4):
-            if outputs[i][j].data < 0.5 and labels[i][j] == False:
-                outputs[i][j+1:j+4] = labels[i][j+1:j+4]
+    x, y = np.where((outputs.cpu()[:,::4]<0.5) & (labels.cpu()[:,::4]==False)==True)
+    y = y*4+1
+    outputs[x, y] = labels[x, y]
+    outputs[x, y+1] = labels[x, y+1]
+    outputs[x, y+2] = labels[x, y+2]
 
     return outputs
 
 def delete_loc_false(labels, outputs):
-    for i in range(len(labels)):
-        for j in range(0,num_classes,4):
-            if labels[i][j+1] == 0 and labels[i][j+2] == 0:
-                outputs[i] = labels[i]
+    x, y = np.where((labels.cpu()[:,1::4]==0) & (labels.cpu()[:,2::4]==0)==True)
+    y = y*4+1
+    outputs[x, y] = labels[x, y]
+    outputs[x, y+1] = labels[x, y+1]
+    # for i in range(len(labels)):
+    #     for j in range(0,num_classes,4):
+    #         if labels[i][j+1] == 0 and labels[i][j+2] == 0:
+    #             outputs[i] = labels[i]
 
     return outputs
 
@@ -550,11 +565,11 @@ if command == "test":
 
     model_ft.eval()
 
-    testsets = myDataset(dataSource=test_dir, gtSource=test_gt_dir, mode='test')
-    # # original testset
-    # random_list = range(num_images)
-    # test_id = random.sample(random_list, 2880)
-    # testsets = myDataset(dataSource=train_dir, gtSource=train_gt_dir, mode='test_baseline', test_id=test_id)
+    # testsets = myDataset(dataSource=test_dir, gtSource=test_gt_dir, mode='test')
+    # original testset
+    random_list = range(num_images)
+    test_id = random.sample(random_list, 9720)
+    testsets = myDataset(dataSource=train_dir, gtSource=train_gt_dir, mode='test_baseline', test_id=test_id)
 
 # Build testset
 testloader_dict = Data.DataLoader(testsets, batch_size=64, shuffle=True, num_workers=8)

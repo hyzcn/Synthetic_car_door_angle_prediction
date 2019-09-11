@@ -168,7 +168,7 @@ def main():
                     val_mae.append(epoch_dist)
 
                 # deep copy the model
-                if phase == 'val' and epoch_loss < best_loss:
+                if phase == 'train' and epoch_loss < best_loss:
                     best_loss = epoch_loss
                     best_model_wts = copy.deepcopy(model.state_dict())
                     torch.save(model.module.state_dict(), args.model_dir.format(model_name, part_name))
@@ -213,12 +213,17 @@ def main():
 
         def load_image(self, dir):
             data_transforms = transforms.Compose([
+                    transforms.Resize((224, 224), interpolation=2),
                     transforms.ToTensor(),
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
                 ])
-            img = cv2.imread(dir)
-            img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
-            return data_transforms(img)
+            if os.path.isfile(dir):
+                img = cv2.imread(dir)
+                # img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
+                return data_transforms(Image.fromarray(cv2.cvtColor(img,cv2.COLOR_BGR2RGB)))
+            else:
+                print(dir+" doesn't exist!")
+                return []
 
         def load_gt(self, name):
             ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
@@ -261,7 +266,10 @@ def main():
 
         # Create training and validation datasets
         trainsets = myDataset(args.data_dir, 'train', train_id)
-        testsets = myDataset(args.data_dir, 'test', test_id)
+        if args.test_spatial:
+            testsets = myDataset(args.test_dir.format(part_name), 'test_spatial')
+        else:
+            testsets = myDataset(args.data_dir, 'test', test_id)
 
         image_datasets = {'train': trainsets, 'val': testsets}
 

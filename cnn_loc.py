@@ -35,9 +35,6 @@ print("Torchvision Version: ",torchvision.__version__)
 
 os.environ['QT_QPA_PLATFORM']='offscreen'
 
-# Top level data directory. Here we assume the format of the directory conforms
-#   to the ImageFolder structure
-#data_dir = "./data/hymenoptera_data"
 
 def main():
     opt = TrainOptions()
@@ -156,14 +153,15 @@ def main():
         return outputs
 
     def delete_loc_false(labels, outputs):
-        x, y = np.where((labels.cpu()[:,1::4]==0) & (labels.cpu()[:,2::4]==0)==True)
-        y = y*4+1
+        x, y = np.where((labels.cpu()[:,1::3]==0) & (labels.cpu()[:,2::3]==0)==True)
+        y = y*3
         outputs[x, y] = labels[x, y]
         outputs[x, y+1] = labels[x, y+1]
+        outputs[x, y+2] = labels[x, y+2]
         # for i in range(len(labels)):
-        #     for j in range(0,num_classes,4):
+        #     for j in range(0,num_classes,3):
         #         if labels[i][j+1] == 0 and labels[i][j+2] == 0:
-        #             outputs[i] = labels[i]
+        #             outputs[i,j:j+3] = labels[i,j:j+3]
 
         return outputs
 
@@ -204,13 +202,12 @@ def main():
                                         0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*224, labels.cpu().detach().numpy()[:,3::4]*224)
             else:
                 outputs = delete_loc_false(labels, outputs)
-                loss_bin = torch.FloatTensor(0)
-                loss_door = criterion(outputs[:,::4], labels[:,::4])
-                loss_pos = (criterion(outputs[:,1::4], labels[:,1::4])+criterion(outputs[:,2::4], labels[:,2::4]))/2
+                loss_door = criterion(outputs[:,::3], labels[:,::3])
+                loss_pos = (criterion(outputs[:,1::3], labels[:,1::3])+criterion(outputs[:,2::3], labels[:,2::3]))/2
                 loss = 0.5*loss_door + 0.5*loss_pos
-                dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,::4], labels.cpu().detach().numpy()[:,::4])
-                dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4]*224, labels.cpu().detach().numpy()[:,1::4]*224)+\
-                                        0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)
+                dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,::3], labels.cpu().detach().numpy()[:,::3])
+                dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,1::3]*224, labels.cpu().detach().numpy()[:,1::3]*224)+\
+                                        0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::3]*224, labels.cpu().detach().numpy()[:,2::3]*224)
             
             if args.add_pre:
                 running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
@@ -285,12 +282,11 @@ def main():
                                 loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
                         else:
                             outputs = delete_loc_false(labels, outputs)
-                            loss_bin = torch.FloatTensor(0)
-                            loss_door = criterion(outputs[:,::4], labels[:,::4])
-                            loss_pos = (criterion(outputs[:,1::4], labels[:,1::4])+criterion(outputs[:,2::4], labels[:,2::4]))/2
-                            dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,::4], labels.cpu().detach().numpy()[:,::4])
-                            dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4]*224, labels.cpu().detach().numpy()[:,1::4]*224)+\
-                                                    0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)
+                            loss_door = criterion(outputs[:,::3], labels[:,::3])
+                            loss_pos = (criterion(outputs[:,1::3], labels[:,1::3])+criterion(outputs[:,2::3], labels[:,2::3]))/2
+                            dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,::3], labels.cpu().detach().numpy()[:,::3])
+                            dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,1::3]*224, labels.cpu().detach().numpy()[:,1::3]*224)+\
+                                                    0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::3]*224, labels.cpu().detach().numpy()[:,2::3]*224)
                             if epoch < 10:
                                 loss = 0.4*loss_door + 0.6*loss_pos
                             else:
@@ -341,7 +337,7 @@ def main():
                     val_pos_mae.append(epoch_dist_pos)
 
                 # deep copy the model
-                if phase == 'val' and (epoch == 0 or epoch_dist_door<best_loss):
+                if phase == 'train' and (epoch == 0 or epoch_dist_door<best_loss):
                     best_loss = epoch_dist_door
                     best_model_wts = copy.deepcopy(model.state_dict())
                     torch.save(model.module.state_dict(), args.model_dir.format(model_name, part_name))
@@ -359,6 +355,7 @@ def main():
     class myDataset(torch.utils.data.Dataset):
         def __init__(self, dataSource, gtSource, mode, cropSource=None, cropGt=None, test_id=None):
             # Just normalization for validation
+            self.mode = mode
             self.dir_img = dataSource
             self.gt_img = np.load(gtSource).item()
             if cropSource:
@@ -388,17 +385,30 @@ def main():
         
         def load_names(self, dir, mode, test_id=None):
             name_data = []
+            # texture settings
             train_params = {
-                "mesh_id":['suv', 'hybrid', 'hatchback', 'sedan2door', 'sedan4door'],
-                "fl":[x for x in range(-40, 1, 20)],
+                "mesh_id":['Hatchback', 'Hybrid', 'Sedan2Door', 'Sedan4Door', 'Suv'],
+                "fl":[x for x in range(0, 41, 20)],
                 "fr":[x for x in range(0, 41, 20)],
-                "bl":[x for x in range(-40, 1, 20)],
+                "bl":[x for x in range(0, 41, 20)],
                 "br":[x for x in range(0, 41, 20)],
                 "trunk":[x for x in range(0, 41, 20)],
                 "az":[x for x in range(0, 361, 40)],
                 "el":[x for x in range(20, 81, 20)],
                 "dist":[400, 450],
             }
+            # spatial settings
+            # train_params = {
+            #     "mesh_id":['suv', 'hybrid', 'hatchback', 'sedan2door', 'sedan4door'],
+            #     "fl":[x for x in range(-40, 1, 20)],
+            #     "fr":[x for x in range(0, 41, 20)],
+            #     "bl":[x for x in range(-40, 1, 20)],
+            #     "br":[x for x in range(0, 41, 20)],
+            #     "trunk":[x for x in range(0, 41, 20)],
+            #     "az":[x for x in range(0, 361, 40)],
+            #     "el":[x for x in range(20, 81, 20)],
+            #     "dist":[400, 450],
+            # }
             if mode == 'train':
                 print("Start sampling...")
                 for i in tqdm(range(args.sample_iter)):
@@ -444,7 +454,13 @@ def main():
                 else:
                     return torch.FloatTensor([abs(int(fl))/data_range if x!= None else 0, x if x!= None else 0, y if x!= None else 0])
             elif part_name == "all":
-                fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  dic[name]
+                name = name.replace("Hatchback", "hatchback").replace("Hybrid", "hybrid").replace("Sedan2Door", "sedan2door").replace("Sedan4Door", "sedan4door").replace("Suv", "suv")
+                ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
+                if self.mode == 'train':
+                    new_name = "{}_{}_{}_{}_{}_{}_{}_{}_{}".format(ins, str(-abs(int(fl))), fr, str(-abs(int(bl))), br, trunk, az, el, dist)
+                else:
+                    new_name = name
+                fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  dic[new_name]
                 if args.add_pre:
                     return torch.FloatTensor([fl_bin, abs(int(fl))/data_range, fl_x, fl_y, \
                                             fr_bin, abs(int(fr))/data_range, fr_x, fr_y, \

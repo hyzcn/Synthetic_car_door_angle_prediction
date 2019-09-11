@@ -1,14 +1,24 @@
 import random
 import itertools
 def sample_data():
-    fl = [x for x in range(-40, 1, 20)]
+    # texture settings
+    fl = [x for x in range(0, 41, 20)]
     fr = [x for x in range(0, 60, 20)]
-    bl = [x for x in range(-40, 1, 20)]
+    bl = [x for x in range(0, 41, 20)]
     br = [x for x in range(0, 60, 20)]
     trunk = [x for x in range(0, 60, 20)] 
     az = [x for x in range(0, 361, 40)]
     el = [x for x in range(20, 90, 20)]
     dist = [400, 450]
+    # spatial settings
+    # fl = [x for x in range(-40, 1, 20)]
+    # fr = [x for x in range(0, 60, 20)]
+    # bl = [x for x in range(-40, 1, 20)]
+    # br = [x for x in range(0, 60, 20)]
+    # trunk = [x for x in range(0, 60, 20)] 
+    # az = [x for x in range(0, 361, 40)]
+    # el = [x for x in range(20, 90, 20)]
+    # dist = [400, 450]
     fl_spl = random.sample(fl, 1)
     fr_spl = random.sample(fr, 1)
     bl_spl = random.sample(bl, 1)

@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 
 # Configurations
 part_name = 'all'
-data_dir = "../datasets/all_test/preset_all_random/"
-data_seg_dir = "../datasets/all_test/preset_all_random_seg/"
-save_dir = "../gt_dict/preset_all_random_{}_gt.npy".format(part_name)
+data_dir = "../datasets/all_test/shapenet_test_all/"
+data_seg_dir = "../datasets/all_test/shapenet_test_all_seg/"
+save_dir = "../gt_dict/shapenet_test_all_{}_gt.npy".format(part_name)
 # Fixed settings
 if part_name == "fl":
     mask_dir = "../seg_dict/preset_car_crop_seg.npy"

@@ -47,7 +47,6 @@ def get_locat_np(seg_dir, part_name):
     # mask_filename = './' + seg_dir.split('/')[-1] + '_' + part_name + '.png'
 
     # print(mask_filename)
-    # imageio.imwrite(mask_filename, mask)
     # plt.imshow(mask)
     # plt.savefig(mask_filename)
 
@@ -122,7 +121,7 @@ def create_gt_all():
             plt.savefig(vis_filename)
 
         gt_dict[file[:-4]] = [fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y]
-    np.save(save_dir, gt_dict)
+    # np.save(save_dir, gt_dict)
     return gt_dict
 
 if __name__ == "__main__":

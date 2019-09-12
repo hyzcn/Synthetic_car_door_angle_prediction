@@ -22,7 +22,7 @@ else
 fi
 
 CUDA_VISIBLE_DEVICES=1 python cnn_pair.py --command train --model-name resnet --part-name all \
-                --batch-size 8 --num-epoch 100 --add-crop False --num-images 97200 \
+                --batch-size 8 --num-epoch 30 --add-crop False --num-images 97200 \
                 --sample-iter 600 --feature-extract False --data-range 60 \
                 --train-dir datasets/train/preset_car_data_texture/ \
                 --crop-dir datasets/train/preset_car_crop/ \
@@ -31,3 +31,5 @@ CUDA_VISIBLE_DEVICES=1 python cnn_pair.py --command train --model-name resnet --
                 --plot-dir plots/$SAVE_FOLDER/{}_ft_{}.jpg \
                 --output-dir outputs/$SAVE_FOLDER/{}_ft_{}.txt \
                 --html-dir htmls/$SAVE_FOLDER/{}_ft_{}.txt \
+                --train-name-dir ImageSets/preset_texture_all_train.txt \
+                --test-name-dir ImageSets/preset_texture_all_test.txt

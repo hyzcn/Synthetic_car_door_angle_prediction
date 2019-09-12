@@ -1,4 +1,4 @@
-SAVE_FOLDER="loc_pre_texture"
+SAVE_FOLDER="test"
 
 if [ ! -d params/$SAVE_FOLDER  ];then
   mkdir params/$SAVE_FOLDER
@@ -22,8 +22,8 @@ else
 fi
 
 
-CUDA_VISIBLE_DEVICES=1,2 python cnn_loc.py --command train --model-name resnet --part-name all \
-                --batch-size 16 --num-epoch 100 --add-crop False --add-pre True \
+CUDA_VISIBLE_DEVICES=0,2 python cnn_loc.py --command train --model-name resnet --part-name all \
+                --batch-size 16 --num-epoch 30 --add-crop False --add-pre False \
                 --sample-iter 600 --feature-extract False --data-range 60 --num-images 97200 \
                 --train-dir datasets/train/preset_car_data_texture/ \
                 --train-gt-dir gt_dict/preset_car_{}_gt.npy \
@@ -34,4 +34,6 @@ CUDA_VISIBLE_DEVICES=1,2 python cnn_loc.py --command train --model-name resnet -
                 --model-dir params/$SAVE_FOLDER/{}_ft_{}_0.3_0.6_64.pkl \
                 --plot-dir plots/$SAVE_FOLDER/ \
                 --output-dir outputs/$SAVE_FOLDER/{}_ft_{}.txt \
-                --html-dir htmls/$SAVE_FOLDER/{}_ft_{}.txt
+                --html-dir htmls/$SAVE_FOLDER/{}_ft_{}.txt \
+                --train-name-dir ImageSets/preset_texture_all_train.txt \
+                --test-name-dir ImageSets/preset_texture_all_test.txt

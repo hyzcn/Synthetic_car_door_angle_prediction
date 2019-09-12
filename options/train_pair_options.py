@@ -17,11 +17,14 @@ class TrainOptions():
         parser.add_argument("--train-dir", type=str, default='datasets/train/preset_car_data/', help="Path to the directory containing the train images.")
         parser.add_argument("--crop-dir", type=str, default='datasets/train/preset_car_crop/', help="Path to the directory containing the FGcrop images.")
         parser.add_argument("--test-dir", type=str, default='datasets/all_test/preset_all_random/', help="Path to the directory containing the test images.")
+        parser.add_argument("--train-name-dir", type=str, default='ImageSets/preset_texture_all_train.txt', help="Path to the file containing training names.")
+        parser.add_argument("--test-name-dir", type=str, default='ImageSets/preset_texture_all_test.txt', help="Path to the file containing testing names.")
         parser.add_argument("--model-dir", type=str, default='params/crop_loc_pre/{}_ft_{}_0.3_0.6_64.pkl', help="Path to the directory saving the model.")
         parser.add_argument("--plot-dir", type=str, default='plots/crop_loc_pre/', help="Path to the directory saving the plots.")
         parser.add_argument("--output-dir", type=str, default='outputs/crop_loc_pre/{}_ft_{}.txt', help="Path to the directory saving the output text.")
         parser.add_argument("--html-dir", type=str, default='htmls/crop_loc_pre/{}_ft_{}.txt', help="Path to the directory saving html texts.")
-        parser.add_argument("--test-baseline", type=ast.literal_eval, default=False, help="Path to the directory containing the train images.")
+        parser.add_argument("--test-baseline", type=ast.literal_eval, default=False, help="Whether test the original preset.")
+        parser.add_argument("--test-texture", type=ast.literal_eval, default=False, help="Wherther test the textured preset test set.")
 
         return parser.parse_args()
 

@@ -16,6 +16,8 @@ class TrainOptions():
         parser.add_argument("--data-range", type=int, default=60, help="max range of prediction factors.")
         parser.add_argument("--data-dir", type=str, default='datasets/train/preset_car_data/', help="Path to the directory containing the train images.")
         parser.add_argument("--test-dir", type=str, default='datasets/all_test/preset_all_random/', help="Path to the directory containing the test images.")
+        parser.add_argument("--train-name-dir", type=str, default='ImageSets/preset_texture_all_train.txt', help="Path to the file containing training names.")
+        parser.add_argument("--test-name-dir", type=str, default='ImageSets/preset_texture_all_test.txt', help="Path to the file containing testing names.")
         parser.add_argument("--model-dir", type=str, default='params/{}_ft_{}_norm.pkl', help="Path to the directory saving the model.")
         parser.add_argument("--plot-dir", type=str, default='plots/{}_ft_{}.jpg', help="Path to the directory saving the plots.")
         parser.add_argument("--output-dir", type=str, default='outputs/{}_ft_{}.txt', help="Path to the directory saving the output text.")

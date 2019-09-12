@@ -8,4 +8,11 @@ python cnn_pair.py --command test --model-name resnet --part-name all \
                 --plot-dir plots/$SAVE_FOLDER/{}_ft_{}.jpg \
                 --output-dir outputs/$SAVE_FOLDER/{}_ft_{}.txt \
                 --html-dir htmls/$SAVE_FOLDER/{}_ft_{}.txt \
-                --test-baseline True
+                --train-name-dir ImageSets/preset_texture_all_train.txt \
+                --test-name-dir ImageSets/preset_texture_all_test.txt \
+                --test-baseline True \
+                --test-texture False
+
+# if test-baseline and test-texture, the data dir is the same as train dir
+# test-texture meams read names from file
+# else, the data dir is test dir

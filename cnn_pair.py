@@ -253,15 +253,16 @@ def main():
             #     "dist":[400, 450],
             # }
             if mode == 'train':
-                print("Start sampling...")
-                for i in tqdm(range(args.sample_iter)):
-                    if part_name == "fl":
-                        sample_names = get_samples(train_params, 0)
-                        name_data += sample_names
-                    elif part_name == "all":
-                        for i in range(5):
-                            sample_names = get_samples(train_params, i)
-                            name_data += sample_names
+                # print("Start sampling...")
+                # for i in tqdm(range(args.sample_iter)):
+                #     if part_name == "fl":
+                #         sample_names = get_samples(train_params, 0)
+                #         name_data += sample_names
+                #     elif part_name == "all":
+                #         for i in range(5):
+                #             sample_names = get_samples(train_params, i)
+                #             name_data += sample_names
+                name_data = open(args.train_name_dir, 'r').read().splitlines() 
                 if self.dir_crop:
                     crop_name = self.load_crops(self.dir_crop)
                     name_data += crop_name
@@ -276,6 +277,8 @@ def main():
                         if n in test_id:
                             name_data.append(file[:-4])
                     n += 1
+            elif mode == 'test_texture':
+                name_data = open(args.test_name_dir, 'r').read().splitlines() 
             
             return name_data
 
@@ -324,7 +327,14 @@ def main():
 
         # Create training and validation datasets
         trainsets = myDataset(dataSource=args.train_dir, cropSource=crop_dir, mode='train')
-        testsets = myDataset(args.test_dir.format(part_name), 'test')
+        if args.test_baseline:
+            random_list = range(args.num_images)
+            test_id = random.sample(random_list, 9720)
+            testsets = myDataset(args.train_dir, 'test_baseline', test_id)
+        elif args.test_texture:
+            testsets = myDataset(args.test_dir.format(part_name), 'test_texture')
+        else:
+            testsets = myDataset(args.test_dir.format(part_name), 'test')
 
         #image_datasets = {'train': myDataset([transform_dataset(X_train, data_transforms), Variable(torch.FloatTensor(y_train))]), 'val': myDataset([transform_dataset(X_val, data_transforms), Variable(torch.FloatTensor(y_val))])}
         image_datasets = {'train': trainsets, 'val': testsets}
@@ -377,6 +387,8 @@ def main():
             random_list = range(args.num_images)
             test_id = random.sample(random_list, 9720)
             testsets = myDataset(args.train_dir, 'test_baseline', test_id)
+        elif args.test_texture:
+            testsets = myDataset(args.train_dir.format(part_name), 'test_texture')
         else:
             testsets = myDataset(args.test_dir.format(part_name), 'test')
 

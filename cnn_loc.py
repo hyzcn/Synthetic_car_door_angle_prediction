@@ -166,21 +166,25 @@ def main():
         return outputs
 
     def output_test(file, html, names, labels, outputs):
+        gt_img = np.load(args.test_gt_dir.format(part_name)).item()
         for i in range(len(names)):
             # visualize txt
             type_gt, fl_gt, fr_gt, bl_gt, br_gt, trunk_gt, az_gt, el_gt, dist_gt = names[i].split('_')
-            content  = "name: {}---gt: [ {}, {}, {}, {}]---predictions: [".format(names[i], bool(labels[i][0]), int(labels[i][1]*data_range), \
-                                                                                int(labels[i][2]*224), int(labels[i][3]*224))
-            content += '{:.2f}, {}, {}, {}'.format(outputs[i][0], int(round(outputs[i][1]*data_range)), int(round(outputs[i][2]*224)), int(round(labels[i][3]*224)))
-            content += "]\n"
-            file.write(content)
-            html.write("{} gt:{} pred:{}\n".format(names[i], fl_gt, str(int(round(outputs[i][1]*data_range)))))
+            # content  = "name: {}---gt: [ {}, {}, {}, {}]---predictions: [".format(names[i], bool(labels[i][0]), int(labels[i][1]*data_range), \
+            #                                                                     int(labels[i][2]*224), int(labels[i][3]*224))
+            # content += '{:.2f}, {}, {}, {}'.format(outputs[i][0], int(round(outputs[i][1]*data_range)), int(round(outputs[i][2]*224)), int(round(labels[i][3]*224)))
+            # content += "]\n"
+            # file.write(content)
+            if args.add_pre:
+                html.write("{} gt:{} pred:{}\n".format(names[i], [fl_gt, fr_gt, bl_gt, br_gt, trunk_gt], str(np.array(outputs[i,1::4])*data_range)))
+            else:
+                html.write("{} gt:{} pred:{}\n".format(names[i], [fl_gt, fr_gt, bl_gt, br_gt, trunk_gt], str(np.array(outputs[i,::3])*data_range)))
 
         
     def test_model(model, dataloaders, criterion):
         since = time.time()
-        file = open(args.output_dir,'w')
-        html = open(args.html_dir,'w')
+        file = open(args.output_dir.format(model_name, part_name),'w')
+        html = open(args.html_dir.format(model_name, part_name),'w')
         print("Start testing...")
         
         running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0}
@@ -282,6 +286,9 @@ def main():
                                 loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
                         else:
                             outputs = delete_loc_false(labels, outputs)
+                            print(labels)
+                            print(outputs)
+                            input()
                             loss_door = criterion(outputs[:,::3], labels[:,::3])
                             loss_pos = (criterion(outputs[:,1::3], labels[:,1::3])+criterion(outputs[:,2::3], labels[:,2::3]))/2
                             dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,::3], labels.cpu().detach().numpy()[:,::3])
@@ -410,15 +417,16 @@ def main():
             #     "dist":[400, 450],
             # }
             if mode == 'train':
-                print("Start sampling...")
-                for i in tqdm(range(args.sample_iter)):
-                    if part_name == "fl":
-                        sample_names = get_samples(train_params, 0)
-                        name_data += sample_names
-                    elif part_name == "all":
-                        for i in range(num_factors):
-                            sample_names = get_samples(train_params, i)
-                            name_data += sample_names
+                # print("Start sampling...")
+                # for i in tqdm(range(args.sample_iter)):
+                #     if part_name == "fl":
+                #         sample_names = get_samples(train_params, 0)
+                #         name_data += sample_names
+                #     elif part_name == "all":
+                #         for i in range(num_factors):
+                #             sample_names = get_samples(train_params, i)
+                #             name_data += sample_names
+                name_data = open(args.train_name_dir, 'r').read().splitlines() 
                 if self.dir_crop:
                     crop_name = self.load_crops(self.dir_crop)
                     name_data += crop_name
@@ -433,6 +441,8 @@ def main():
                         if n in test_id:
                             name_data.append(file[:-4])
                     n += 1
+            elif mode == 'test_texture':
+                name_data = open(args.test_name_dir, 'r').read().splitlines() 
 
             return name_data
 
@@ -456,7 +466,7 @@ def main():
             elif part_name == "all":
                 name = name.replace("Hatchback", "hatchback").replace("Hybrid", "hybrid").replace("Sedan2Door", "sedan2door").replace("Sedan4Door", "sedan4door").replace("Suv", "suv")
                 ins, fl, fr, bl, br, trunk, az, el, dist = name.split('_')
-                if self.mode == 'train':
+                if args.texture:
                     new_name = "{}_{}_{}_{}_{}_{}_{}_{}_{}".format(ins, str(-abs(int(fl))), fr, str(-abs(int(bl))), br, trunk, az, el, dist)
                 else:
                     new_name = name
@@ -548,6 +558,8 @@ def main():
             random_list = range(args.num_images)
             test_id = random.sample(random_list, 9720)
             testsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), mode='test_baseline', test_id=test_id)
+        elif args.test_texture:
+            testsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), mode='test_texture')
         else:
             testsets = myDataset(dataSource=args.test_dir.format(part_name), gtSource=args.test_gt_dir.format(part_name), mode='test')
 

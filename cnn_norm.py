@@ -198,12 +198,16 @@ def main():
         def load_names(self, dir, mode, data_id):
             name_data = []
             n = 0
-            if mode == "train" or mode == "test":
-                for file in os.listdir(dir):
-                    if file[-3:] == "png":
-                        if n in data_id:
-                            name_data.append(file[:-4])
-                        n += 1
+            # if mode == "train" or mode == "test":
+            #     for file in os.listdir(dir):
+            #         if file[-3:] == "png":
+            #             if n in data_id:
+            #                 name_data.append(file[:-4])
+            #             n += 1
+            if mode == "train":
+                name_data = open(args.train_name_dir, 'r').read().splitlines() 
+            elif mode == "test":
+                name_data = open(args.test_name_dir, 'r').read().splitlines() 
             elif mode == "test_spatial":
                 for file in os.listdir(dir):
                     if file[-3:] == "png":

@@ -187,7 +187,7 @@ def main():
                     val_mae.append(epoch_dist*abs(data_range))
 
                 # deep copy the model
-                if phase == 'train' and (epoch == 0 or epoch_loss<best_loss):
+                if phase == 'val' and (epoch == 0 or epoch_loss<best_loss):
                     best_loss = epoch_loss
                     best_model_wts = copy.deepcopy(model.state_dict())
                     torch.save(model.module.state_dict(), args.model_dir.format(model_name, part_name))
@@ -229,29 +229,29 @@ def main():
         def load_names(self, mode, test_id=None):
             name_data = []
             # texture settings
-            train_params = {
-                "mesh_id":['Hatchback', 'Hybrid', 'Sedan2Door', 'Sedan4Door', 'Suv'],
-                "fl":[x for x in range(0, 41, 20)],
-                "fr":[x for x in range(0, 41, 20)],
-                "bl":[x for x in range(0, 41, 20)],
-                "br":[x for x in range(0, 41, 20)],
-                "trunk":[x for x in range(0, 41, 20)],
-                "az":[x for x in range(0, 361, 40)],
-                "el":[x for x in range(20, 81, 20)],
-                "dist":[400, 450],
-            }
-            # spatial settings
             # train_params = {
-            #     "mesh_id":['suv', 'hybrid', 'hatchback', 'sedan2door', 'sedan4door'],
-            #     "fl":[x for x in range(-40, 1, 20)],
+            #     "mesh_id":['Hatchback', 'Hybrid', 'Sedan2Door', 'Sedan4Door', 'Suv'],
+            #     "fl":[x for x in range(0, 41, 20)],
             #     "fr":[x for x in range(0, 41, 20)],
-            #     "bl":[x for x in range(-40, 1, 20)],
+            #     "bl":[x for x in range(0, 41, 20)],
             #     "br":[x for x in range(0, 41, 20)],
             #     "trunk":[x for x in range(0, 41, 20)],
             #     "az":[x for x in range(0, 361, 40)],
             #     "el":[x for x in range(20, 81, 20)],
             #     "dist":[400, 450],
             # }
+            # spatial settings
+            train_params = {
+                "mesh_id":['suv', 'hybrid', 'hatchback', 'sedan2door', 'sedan4door'],
+                "fl":[x for x in range(-40, 1, 20)],
+                "fr":[x for x in range(0, 41, 20)],
+                "bl":[x for x in range(-40, 1, 20)],
+                "br":[x for x in range(0, 41, 20)],
+                "trunk":[x for x in range(0, 41, 20)],
+                "az":[x for x in range(0, 361, 40)],
+                "el":[x for x in range(20, 81, 20)],
+                "dist":[400, 450],
+            }
             if mode == 'train':
                 # print("Start sampling...")
                 # for i in tqdm(range(args.sample_iter)):

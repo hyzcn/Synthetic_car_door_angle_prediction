@@ -3,10 +3,10 @@ python cnn_norm.py --command test --model-name resnet --part-name all \
                 --train-num 45000 --test-num 9720 \
                 --feature-extract False --data-range 60 \
                 --data-dir datasets/train/preset_car_data/ \
-                --test-dir datasets/all_test/shapenet_test_all/ \
-                --model-dir params/{}_ft_{}_texture.pkl \
-                --plot-dir plots/{}_ft_{}_texture.jpg \
-                --output-dir outputs/{}_ft_{}_texture.txt \
+                --test-dir datasets/all_test/preset_all_same/ \
+                --model-dir params/{}_ft_{}_norm.pkl \
+                --plot-dir plots/{}_ft_{}_norm.jpg \
+                --output-dir outputs/{}_ft_{}_norm.txt \
                 --train-name-dir ImageSets/preset_all_train_norm.txt \
                 --test-name-dir ImageSets/preset_all_test_norm.txt \
                 --test-spatial False

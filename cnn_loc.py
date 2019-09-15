@@ -135,6 +135,7 @@ def main():
 
     def delete_pre_train(labels, outputs):
         x, y = np.where((labels.cpu()[:,::4]==False)==True)
+        # x, y = np.where(((labels.cpu()[:,::4]==False) | ((labels.cpu()[:,2::4]==0) & (labels.cpu()[:,3::4]==0)))==True)
         y = y*4+1
         outputs[x, y] = labels[x, y]
         outputs[x, y+1] = labels[x, y+1]
@@ -145,6 +146,7 @@ def main():
 
     def delete_pre_test(labels, outputs):
         x, y = np.where((outputs.cpu()[:,::4]<0.5) & (labels.cpu()[:,::4]==False)==True)
+        # x, y = np.where((outputs.cpu()[:,::4]<0.5) & ((labels.cpu()[:,::4]==False) | ((labels.cpu()[:,2::4]==0) & (labels.cpu()[:,3::4]==0)))==True)
         y = y*4+1
         outputs[x, y] = labels[x, y]
         outputs[x, y+1] = labels[x, y+1]
@@ -273,7 +275,10 @@ def main():
                         outputs = model(inputs)
 
                         if args.add_pre:
-                            outputs = delete_pre_train(labels, outputs)
+                            if phase == "train":
+                                outputs = delete_pre_train(labels, outputs)
+                            else:
+                                outputs = delete_pre_test(labels, outputs)
                             loss_bin = criterion(outputs[:,::4], labels[:,::4])
                             loss_door = criterion(outputs[:,1::4], labels[:,1::4])
                             loss_pos = (criterion(outputs[:,2::4], labels[:,2::4])+criterion(outputs[:,3::4], labels[:,3::4]))/2
@@ -344,7 +349,7 @@ def main():
                     val_pos_mae.append(epoch_dist_pos)
 
                 # deep copy the model
-                if phase == 'train' and (epoch == 0 or epoch_dist_door<best_loss):
+                if phase == 'val' and (epoch == 0 or epoch_dist_door<best_loss):
                     best_loss = epoch_dist_door
                     best_model_wts = copy.deepcopy(model.state_dict())
                     torch.save(model.module.state_dict(), args.model_dir.format(model_name, part_name))
@@ -472,11 +477,11 @@ def main():
                     new_name = name
                 fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  dic[new_name]
                 if args.add_pre:
-                    return torch.FloatTensor([fl_bin, abs(int(fl))/data_range, fl_x, fl_y, \
-                                            fr_bin, abs(int(fr))/data_range, fr_x, fr_y, \
-                                            bl_bin, abs(int(bl))/data_range, bl_x, bl_y, \
-                                            br_bin, abs(int(br))/data_range, br_x, br_y, \
-                                            trunk_bin, abs(int(trunk))/data_range, trunk_x, trunk_y])
+                    return torch.FloatTensor([(fl_bin and bool(fl_x) and bool(fl_y)), abs(int(fl))/data_range, fl_x, fl_y, \
+                                            (fr_bin and bool(fr_x) and bool(fr_y)), abs(int(fr))/data_range, fr_x, fr_y, \
+                                            (bl_bin and bool(bl_x) and bool(bl_y)), abs(int(bl))/data_range, bl_x, bl_y, \
+                                            (br_bin and bool(br_x) and bool(br_y)), abs(int(br))/data_range, br_x, br_y, \
+                                            (trunk_bin and bool(trunk_x) and bool(trunk_y)), abs(int(trunk))/data_range, trunk_x, trunk_y])
                 else:
                     return torch.FloatTensor([abs(int(fl))/data_range, fl_x, fl_y, \
                                             abs(int(fr))/data_range, fr_x, fr_y, \

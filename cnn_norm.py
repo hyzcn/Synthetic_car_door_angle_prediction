@@ -168,7 +168,7 @@ def main():
                     val_mae.append(epoch_dist)
 
                 # deep copy the model
-                if phase == 'train' and epoch_loss < best_loss:
+                if phase == 'val' and epoch_loss < best_loss:
                     best_loss = epoch_loss
                     best_model_wts = copy.deepcopy(model.state_dict())
                     torch.save(model.module.state_dict(), args.model_dir.format(model_name, part_name))

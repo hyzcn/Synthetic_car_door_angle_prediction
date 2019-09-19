@@ -18,7 +18,7 @@ def set_parameter_requires_grad(model, feature_extracting):
         for param in model.parameters():
             param.requires_grad = False
 
-def initialize_model(model_name, num_classes, feature_extract, use_pretrained=True):
+def initialize_model(model_name, num_classes, seg_classes, feature_extract, use_pretrained=True):
     # Initialize these variables which will be set in this if statement. Each of these
     #   variables is model specific.
     model_ft = None
@@ -27,7 +27,7 @@ def initialize_model(model_name, num_classes, feature_extract, use_pretrained=Tr
     if model_name == "resnet":
         """ Resnet18
         """
-        model_ft = resnet18_seg(pretrained=use_pretrained,num_classes=num_classes)
+        model_ft = resnet18_seg(pretrained=use_pretrained,num_classes=num_classes, seg_classes=seg_classes)
         set_parameter_requires_grad(model_ft, feature_extract)
         input_size = 224
     
@@ -131,7 +131,7 @@ class Bottleneck(nn.Module):
 
 class ResNet_Seg(nn.Module):
 
-    def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
+    def __init__(self, block, layers, num_classes=1000, seg_classes=9, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None):
         super(ResNet_Seg, self).__init__()
@@ -167,12 +167,16 @@ class ResNet_Seg(nn.Module):
             nn.Linear(512 * block.expansion, num_classes),
             nn.Sigmoid() # add sigmoid or not
         )
+
+        self.score_pool3 = nn.Conv2d(128, seg_classes, 1)
+        self.score_pool4 = nn.Conv2d(256, seg_classes, 1)
+        self.score_pool5 = nn.Conv2d(512, seg_classes, 1)
         self.upscore2 = nn.ConvTranspose2d(
-            n_class, n_class, 4, stride=2, bias=False)
+            seg_classes, seg_classes, 2, stride=2, bias=False)
         self.upscore8 = nn.ConvTranspose2d(
-            n_class, n_class, 16, stride=8, bias=False)
+            seg_classes, seg_classes, 8, stride=8, bias=False)
         self.upscore_pool4 = nn.ConvTranspose2d(
-            n_class, n_class, 4, stride=2, bias=False)
+            seg_classes, seg_classes, 2, stride=2, bias=False)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -222,19 +226,52 @@ class ResNet_Seg(nn.Module):
         x = self.maxpool(x)
 
         x = self.layer1(x)
+        pool2 = x # 1/4
         x = self.layer2(x)
+        pool3 = x # 1/8
         x = self.layer3(x)
+        pool4 = x # 1/16
         x = self.layer4(x)
+        pool5 = x # 1/32
 
+        # regression
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
 
-        return x
+        # segmentation
+        h = self.score_pool5(pool5)
+        # print("pool5: ", h.shape)
+        h = self.upscore2(h)
+        upscore2 = h  # 1/16
+        # print("2xupsample pool5: ", upscore2.shape)
+        h = self.score_pool4(pool4)  # XXX: scaling to train at once
+        # h = h[:, :, 5:5 + upscore2.size()[2], 5:5 + upscore2.size()[3]]
+        score_pool4c = h  # 1/16
+        # print("pool4: ", score_pool4c.shape)
+
+        h = upscore2 + score_pool4c  # 1/16
+        h = self.upscore_pool4(h)
+        upscore_pool4 = h  # 1/8
+        # print("add 2upsample: ", upscore_pool4.shape)
+
+        h = self.score_pool3(pool3)  # XXX: scaling to train at once
+        # h = h[:, :,
+        #       9:9 + upscore_pool4.size()[2],
+        #       9:9 + upscore_pool4.size()[3]]
+        # print("pool3: ", h.shape)
+        score_pool3c = h  # 1/8
+
+        h = upscore_pool4 + score_pool3c  # 1/8
+
+        h = self.upscore8(h).contiguous()
+        # h = h[:, :, 31:31 + x.size()[2], 31:31 + x.size()[3]].contiguous()
+
+        return x, h
 
 
-def _resnet(arch, block, layers, pretrained, progress, num_classes, **kwargs):
-    model = ResNet_Seg(block, layers, num_classes=num_classes, **kwargs)
+def _resnet(arch, block, layers, pretrained, progress, num_classes, seg_classes, **kwargs):
+    model = ResNet_Seg(block, layers, num_classes=num_classes, seg_classes=seg_classes, **kwargs)
     if pretrained:
         pretrained_dict = load_state_dict_from_url(model_urls[arch],
                                               progress=progress)
@@ -245,7 +282,7 @@ def _resnet(arch, block, layers, pretrained, progress, num_classes, **kwargs):
     return model
 
 
-def resnet18_seg(pretrained=False, progress=True, num_classes=1000, **kwargs):
+def resnet18_seg(pretrained=False, progress=True, num_classes=1000, seg_classes=9, **kwargs):
     r"""ResNet-18 model from
     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
     Args:
@@ -253,4 +290,4 @@ def resnet18_seg(pretrained=False, progress=True, num_classes=1000, **kwargs):
         progress (bool): If True, displays a progress bar of the download to stderr
     """
     return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress, num_classes,
-                   **kwargs)
+                   seg_classes, **kwargs)

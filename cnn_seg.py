@@ -22,7 +22,7 @@ from tqdm import tqdm
 from sklearn.metrics import mean_absolute_error
 from utils.seg_dict_save import read_seg_dict
 from utils.random_sample import get_samples
-from options.train_loc_options import TrainOptions
+from options.train_seg_options import TrainOptions
 from model.model_seg import initialize_model
 import re
 try:
@@ -272,7 +272,8 @@ def main():
                     # forward
                     # track history if only in train
                     with torch.set_grad_enabled(phase == 'train'):
-                        outputs = model(inputs)
+                        outputs, segs = model(inputs)
+                        # print(segs.shape)
 
                         if args.add_pre:
                             if phase == "train":
@@ -465,12 +466,12 @@ def main():
 
     if args.command == "train":
         # Initialize the model for this run
-        model_ft, input_size = initialize_model(model_name, num_classes, args.feature_extract, use_pretrained=True)
+        model_ft, input_size = initialize_model(model_name, num_classes, args.seg_classes, args.feature_extract, use_pretrained=True)
         model_ft = nn.DataParallel(model_ft)
 
 
         # Print the model we just instantiated
-        print(model_ft)
+        # print(model_ft)
 
         print("Initializing Datasets and Dataloaders...")
 

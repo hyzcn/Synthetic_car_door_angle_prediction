@@ -23,7 +23,7 @@ fi
 
 
 CUDA_VISIBLE_DEVICES=2,3 python cnn_seg.py --command train --model-name resnet --part-name all \
-                --batch-size 16 --num-epoch 50 --add-crop False --add-pre True \
+                --batch-size 16 --num-epoch 50 --add-crop False --add-pre True --seg-classes 9 \
                 --sample-iter 600 --feature-extract False --data-range 60 --num-images 97200 \
                 --train-dir datasets/train/preset_car_data/ \
                 --train-gt-dir gt_dict/preset_car_{}_gt.npy \
@@ -37,6 +37,6 @@ CUDA_VISIBLE_DEVICES=2,3 python cnn_seg.py --command train --model-name resnet -
                 --html-dir htmls/$SAVE_FOLDER/{}_ft_{}.txt \
                 --test-texture False \
                 --train-name-dir ImageSets/preset_all_train_final_norm.txt \
-                --test-name-dir ImageSets/preset_all_test_final_norm.txt > params/$SAVE_FOLDER/log
+                --test-name-dir ImageSets/preset_all_test_final_norm.txt #> params/$SAVE_FOLDER/log
 
 # remember to modify saving model mode when doing different experiments!!!!!!!

@@ -2,11 +2,11 @@ import glob
 
 # Settings 
 model_name = "resnet"
-part_name = 'fl'
+part_name = 'all'
 filt_name = 'focus'
-input_dir = '/home/xwei18/shapenet_car/htmls/sigmoid/{}_ft_{}_same.txt'.format(model_name, part_name)
+input_dir = '/home/xwei18/shapenet_car/htmls/crop_loc_pre_texture/{}_ft_{}.txt'.format(model_name, part_name)
 
-iffilter = True
+iffilter = False
 filt_dir = '/home/xwei18/shapenet_car/focus_names/{}_ft_{}_same/{}.txt'.format(model_name, part_name, filt_name)
 
 def read_filter(path):
@@ -54,7 +54,7 @@ def read_names(path):
     content_list = file.readlines()
     ndict = {}
     for line in content_list:
-        content = line.strip().split(' ')
+        content = line.strip().split(':')
         ndict[content[0]] = content[1]+' '+content[2]
     
     return ndict
@@ -63,7 +63,7 @@ def create_text(imgs, ndict, flist=None, sdict=None):
     texts = []
     if flist == None:
         for img in imgs:
-            texts.append(ndict[img])
+            texts.append(ndict[img[:-4].split('/')[-1]])
     else:
         for img in imgs:
             if img in flist:

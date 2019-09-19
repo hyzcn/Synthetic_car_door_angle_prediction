@@ -20,10 +20,10 @@ import torch.utils.data as Data
 import random
 from tqdm import tqdm
 from sklearn.metrics import mean_absolute_error
-from utils.seg_dict_save import *
-from model import *
+from utils.seg_dict_save import read_seg_dict
+from model.model import set_parameter_requires_grad, initialize_model
 import re
-from utils.random_sample import *
+from utils.random_sample import get_samples
 from options.train_loc_options import TrainOptions
 try:
     from torch.hub import load_state_dict_from_url
@@ -178,9 +178,9 @@ def main():
             # content += "]\n"
             # file.write(content)
             if args.add_pre:
-                html.write("{} gt:{} pred:{}\n".format(names[i], [fl_gt, fr_gt, bl_gt, br_gt, trunk_gt], str(np.array(outputs[i,1::4])*data_range)))
+                html.write("{}:gt {}:pred {}\n".format(names[i], [fl_gt, fr_gt, bl_gt, br_gt, trunk_gt], str(np.array(outputs[i,1::4])*data_range)))
             else:
-                html.write("{} gt:{} pred:{}\n".format(names[i], [fl_gt, fr_gt, bl_gt, br_gt, trunk_gt], str(np.array(outputs[i,::3])*data_range)))
+                html.write("{}:gt {}:pred {}\n".format(names[i], [fl_gt, fr_gt, bl_gt, br_gt, trunk_gt], str(np.array(outputs[i,::3])*data_range)))
 
         
     def test_model(model, dataloaders, criterion):
@@ -397,40 +397,7 @@ def main():
         
         def load_names(self, dir, mode, test_id=None):
             name_data = []
-            # texture settings
-            train_params = {
-                "mesh_id":['Hatchback', 'Hybrid', 'Sedan2Door', 'Sedan4Door', 'Suv'],
-                "fl":[x for x in range(0, 41, 20)],
-                "fr":[x for x in range(0, 41, 20)],
-                "bl":[x for x in range(0, 41, 20)],
-                "br":[x for x in range(0, 41, 20)],
-                "trunk":[x for x in range(0, 41, 20)],
-                "az":[x for x in range(0, 361, 40)],
-                "el":[x for x in range(20, 81, 20)],
-                "dist":[400, 450],
-            }
-            # spatial settings
-            # train_params = {
-            #     "mesh_id":['suv', 'hybrid', 'hatchback', 'sedan2door', 'sedan4door'],
-            #     "fl":[x for x in range(-40, 1, 20)],
-            #     "fr":[x for x in range(0, 41, 20)],
-            #     "bl":[x for x in range(-40, 1, 20)],
-            #     "br":[x for x in range(0, 41, 20)],
-            #     "trunk":[x for x in range(0, 41, 20)],
-            #     "az":[x for x in range(0, 361, 40)],
-            #     "el":[x for x in range(20, 81, 20)],
-            #     "dist":[400, 450],
-            # }
             if mode == 'train':
-                # print("Start sampling...")
-                # for i in tqdm(range(args.sample_iter)):
-                #     if part_name == "fl":
-                #         sample_names = get_samples(train_params, 0)
-                #         name_data += sample_names
-                #     elif part_name == "all":
-                #         for i in range(num_factors):
-                #             sample_names = get_samples(train_params, i)
-                #             name_data += sample_names
                 name_data = open(args.train_name_dir, 'r').read().splitlines() 
                 if self.dir_crop:
                     crop_name = self.load_crops(self.dir_crop)
@@ -509,7 +476,10 @@ def main():
 
         # Create training and validation datasets
         trainsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), cropSource=crop_dir, cropGt=crop_gt_dir, mode='train')
-        testsets = myDataset(dataSource=args.test_dir.format(part_name), gtSource=args.test_gt_dir.format(part_name), mode='test')
+        if args.test_texture:
+            testsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), mode='test_texture')
+        else:
+            testsets = myDataset(dataSource=args.test_dir.format(part_name), gtSource=args.test_gt_dir.format(part_name), mode='test')
 
         image_datasets = {'train': trainsets, 'val': testsets}
 

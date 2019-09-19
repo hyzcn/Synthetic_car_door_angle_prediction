@@ -23,32 +23,33 @@ from model import *
 
 ############### Configurations ###############
 # mode settings
-generate_cam = False
-cal_overlap = True
+generate_cam = True
+cal_overlap = False
 
 # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
 model_name = "resnet"
-part_name = 'fl'
+part_name = 'all'
 
 # Number of classes in the dataset
-num_classes = 1
+num_classes = 20
 
 # Flag for feature extracting. When False, we finetune the whole model,
 #   when True we only update the reshaped layer params
 feature_extract = False
 
 # Dataset directory
-test_dir = "datasets/preset_test_{}/".format(part_name)
+test_dir = "datasets/all_test/preset_test_texture/".format(part_name)
 seg_dir = 'datasets/preset_test_{}_seg/'.format(part_name)
 seg_dict_dir = 'seg_dict/preset_test_{}_seg.npy'.format(part_name)
 vis_dir = "vis_dis/vis_dis_fl.npy"
 
 # Model settings 
-param_dir = "params/sigmoid/{}_ft_{}.pkl".format(model_name, part_name)
+param_dir = "params/crop_loc_pre_texture/{}_ft_{}_0.3_0.6_64.pkl".format(model_name, part_name)
 pred_dir = 'htmls/sigmoid/{}_ft_{}_same.txt'.format(model_name, part_name)
+gt_dir = "gt_dict/preset_test_coco_all_all_gt.npy"
 
 # Save settings
-cam_dir = "cam_test/sigmoid/{}_ft_{}_same/".format(model_name, part_name)
+cam_dir = "cam_test/crop_loc_pre_texture/preset_test_texture/".format(model_name, part_name)
 over_save_dir = 'overlaps/sigmoid/{}_ft_{}_same.csv'.format(model_name, part_name)
 focus_dir = 'focus_names/{}_ft_{}_same/focus.txt'.format(model_name, part_name)
 unfocus_dir = 'focus_names/{}_ft_{}_same/unfocus.txt'.format(model_name, part_name)
@@ -115,11 +116,13 @@ elif model_name == 'vgg':
 net.eval()
 
 # traverse all the images in test_dir
-print("Load predictions...")
-pred_dict = load_pred(pred_dir)
-print("Load seg masks...")
-seg_mask_dict = read_seg_dict(seg_dir, seg_dict_dir)
-vis_dict = np.load(vis_dir).item()
+gt_dict = np.load(gt_dir).item()
+if cal_overlap:
+    print("Load predictions...")
+    pred_dict = load_pred(pred_dir)
+    print("Load seg masks...")
+    seg_mask_dict = read_seg_dict(seg_dir, seg_dict_dir)
+    vis_dict = np.load(vis_dir).item()
 
 # data init
 focus_loss = 0
@@ -151,8 +154,8 @@ with open(over_save_dir,"w") as csvfile:
 
             # get the softmax weight
             params = list(net.parameters())
-            # weight_softmax = np.squeeze(params[-2].data.numpy())
-            weight_softmax = np.squeeze(params[-2].data.numpy()).reshape(1, 512)
+            weight_softmax = np.squeeze(params[-2].data.numpy())
+            # weight_softmax = np.squeeze(params[-2].data.numpy()).reshape(1, 512)
 
             def returnCAM(feature_conv, weight_softmax, class_idx):
                 # generate the class activation maps upsample to 256x256
@@ -194,7 +197,7 @@ with open(over_save_dir,"w") as csvfile:
             # bar.set_description("idx: {}, idx[0]: {}".format(idx, idx[0]))
 
             # generate class activation mapping for the top1 prediction
-            CAMs = returnCAM(features_blobs[0], weight_softmax, [idx])
+            CAMs = returnCAM(features_blobs[0], weight_softmax, [12])
 
             # render the CAM and output
             img = cv2.imread(test_dir+file)
@@ -203,6 +206,9 @@ with open(over_save_dir,"w") as csvfile:
 
             if generate_cam:
                 result = heatmap * 0.3 + img * 0.5
+                # type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
+                # fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  gt_dict[file[:-4]]
+                # if (br_bin and bool(br_x) and bool(br_y)) and az == '160' and el == '80':
                 cv2.imwrite(cam_dir+file, result)
 
             if cal_overlap:
@@ -237,7 +243,3 @@ with open(over_save_dir,"w") as csvfile:
         focus_file.close()
         unfocus_file.close()
         none_file.close()
-
-
-
-

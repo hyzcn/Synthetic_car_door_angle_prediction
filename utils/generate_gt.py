@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 
 # Configurations
 part_name = 'all'
-data_dir = "../datasets/all_test/shapenet_test_all/"
-data_seg_dir = "../datasets/all_test/shapenet_test_all_seg/"
-save_dir = "../gt_dict/shapenet_test_all_{}_gt.npy".format(part_name)
+data_dir = "../datasets/all_test/preset_test_coco/"
+data_seg_dir = "../datasets/all_test/preset_test_coco_seg/"
+save_dir = "../gt_dict/preset_test_coco_all_{}_gt.npy".format(part_name)
 # Fixed settings
 if part_name == "fl":
     mask_dir = "../seg_dict/preset_car_crop_seg.npy"
@@ -104,7 +104,7 @@ def create_gt_all():
         _, _, trunk_bin = trunk_vis_dict[az+'_'+el]
         trunk_x, trunk_y = get_locat(data_seg_dir+file, "trunk")
 
-        vis = False
+        vis = True
         if vis:
             seg_im = plt.imread(os.path.join(data_seg_dir, file))
             plt.figure()
@@ -120,8 +120,9 @@ def create_gt_all():
             plt.plot(xs, ys, 'r*', markersize=5)
             plt.savefig(vis_filename)
 
+        file = file.replace("Hatchback", "hatchback").replace("Hybrid", "hybrid").replace("Sedan2Door", "sedan2door").replace("Sedan4Door", "sedan4door").replace("Suv", "suv")
         gt_dict[file[:-4]] = [fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y]
-    # np.save(save_dir, gt_dict)
+    np.save(save_dir, gt_dict)
     return gt_dict
 
 if __name__ == "__main__":

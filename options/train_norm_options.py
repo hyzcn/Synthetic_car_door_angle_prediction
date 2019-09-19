@@ -21,6 +21,9 @@ class TrainOptions():
         parser.add_argument("--model-dir", type=str, default='params/{}_ft_{}_norm.pkl', help="Path to the directory saving the model.")
         parser.add_argument("--plot-dir", type=str, default='plots/{}_ft_{}.jpg', help="Path to the directory saving the plots.")
         parser.add_argument("--output-dir", type=str, default='outputs/{}_ft_{}.txt', help="Path to the directory saving the output text.")
+        parser.add_argument("--html-dir", type=str, default='htmls/{}_ft_{}.txt', help="Path to the directory saving html texts.")
+        parser.add_argument("--train-gt-dir", type=str, default='gt_dict/preset_car_all_gt.npy', help="Path to test set gt.")
+        parser.add_argument("--test-gt-dir", type=str, default='gt_dict/preset_car_all_gt.npy', help="Path to test set gt.")
         parser.add_argument("--test-spatial", type=ast.literal_eval, default=False, help="whether test the model on spatial interferenced dataset.")
 
         return parser.parse_args()

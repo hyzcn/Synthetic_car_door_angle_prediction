@@ -92,9 +92,9 @@ def gen_crop():
         seg = cv2.imread(seg_dir+file+".png")
         top, bottom, left, right = get_crop_loc(seg)
         crop_img = img[top:bottom,left:right,:]
-        # crop_seg = seg[top:bottom,left:right,:]
+        crop_seg = seg[top:bottom,left:right,:]
         cv2.imwrite(img_save_dir+file+".png", crop_img)
-        # cv2.imwrite(seg_save_dir+file+".png", crop_seg)
+        cv2.imwrite(seg_save_dir+file+".png", crop_seg)
 
 if __name__=="__main__":
     gen_crop()

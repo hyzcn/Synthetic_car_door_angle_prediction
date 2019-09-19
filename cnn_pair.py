@@ -20,9 +20,9 @@ import torch.utils.data as Data
 import random
 from tqdm import tqdm
 from sklearn.metrics import mean_absolute_error
-from model import *
+from model.model import set_parameter_requires_grad, initialize_model
 import re
-from utils.random_sample import *
+from utils.random_sample import get_samples
 from options.train_pair_options import TrainOptions
 try:
     from torch.hub import load_state_dict_from_url

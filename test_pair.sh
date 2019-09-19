@@ -11,7 +11,7 @@ python cnn_pair.py --command test --model-name resnet --part-name all \
                 --train-name-dir ImageSets/preset_all_train_sample.txt \
                 --test-name-dir ImageSets/preset_all_test_sample.txt \
                 --test-baseline False \
-                --test-texture True
+                --test-texture False
 
 # if test-baseline and test-texture, the data dir is the same as train dir
 # test-texture meams read names from file

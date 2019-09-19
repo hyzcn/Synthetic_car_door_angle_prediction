@@ -1,4 +1,4 @@
-SAVE_FOLDER="fixed_v2_loc_pre"
+SAVE_FOLDER="loc_pre_texture"
 # only when SAVE_FOLDER is locaion, use False
 python cnn_loc.py --command test --model-name resnet --part-name all \
                 --batch-size 64 --add-pre True \
@@ -12,9 +12,9 @@ python cnn_loc.py --command test --model-name resnet --part-name all \
                 --output-dir outputs/$SAVE_FOLDER/{}_ft_{}.txt \
                 --html-dir htmls/$SAVE_FOLDER/{}_ft_{}.txt \
                 --train-name-dir ImageSets/preset_all_train_sample.txt \
-                --test-name-dir ImageSets/preset_all_test_sample.txt \
+                --test-name-dir ImageSets/preset_all_test_final_norm.txt \
                 --test-baseline False \
-                --test-texture True \
+                --test-texture False \
                 --texture False
 
 # if test-baseline and test-texture, the data dir is the same as train dir

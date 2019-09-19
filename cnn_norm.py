@@ -20,7 +20,7 @@ from sklearn.metrics import mean_absolute_error
 import torch.utils.data as Data
 from tqdm import tqdm
 import random
-from model import *
+from model.model import set_parameter_requires_grad, initialize_model
 from options.train_norm_options import TrainOptions
 print("PyTorch Version: ",torch.__version__)
 print("Torchvision Version: ",torchvision.__version__)
@@ -31,6 +31,8 @@ def main():
     opt = TrainOptions()
     args = opt.initialize()
     opt.print_options(args)
+    train_dict = np.load(args.train_gt_dir).item()
+    test_dict = np.load(args.test_gt_dir).item()
 
     # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
     model_name = args.model_name
@@ -70,21 +72,45 @@ def main():
         plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0.)
         plt.savefig(args.plot_dir.format(model_name, part_name))
 
-    def output_test(file, names, outputs):
+    def output_test(file, html, names, outputs):
         for i in range(len(names)):
             # visualize txt
             type_gt, fl_gt, fr_gt, bl_gt, br_gt, trunk_gt, az_gt, el_gt, dist_gt = names[i].split('_')
             content  = "gt: [{}]  predictions: [{}]".format(fl_gt,str(int(round(outputs[i][0]*-60))))
             content += "]\n"
             file.write(content)
+            html.write("{}:gt {}:pred {}\n".format(names[i], [fl_gt, fr_gt, bl_gt, br_gt, trunk_gt], str(np.array(outputs[i])*data_range)))
             
+    def delete_pre_test(names, labels, outputs, ndict):
+        num = len(names)*5
+        for i in range(len(names)):
+            fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  ndict[names[i].lower()]
+            if fl_bin and bool(fl_x) and bool(fl_y):
+                outputs[i][0] = labels[i][0]
+                num -= 1
+            if fr_bin and bool(fr_x) and bool(fr_y):
+                outputs[i][1] = labels[i][1]
+                num -= 1
+            if bl_bin and bool(bl_x) and bool(bl_y):
+                outputs[i][2] = labels[i][2]
+                num -= 1
+            if br_bin and bool(br_x) and bool(br_y):
+                outputs[i][3] = labels[i][3]
+                num -= 1
+            if trunk_bin and bool(trunk_x) and bool(trunk_y):
+                outputs[i][4] = labels[i][4]
+                num -= 1
+
+        return outputs, num
 
     def test_model(model, dataloaders, criterion):
         since = time.time()
         file = open(args.output_dir.format(model_name, part_name),'w')
+        html = open(args.html_dir.format(model_name, part_name),'w')
         
         running_loss = 0
         running_dist = 0
+        snum = 0
         for names, inputs, labels in tqdm(dataloaders):
             inputs = inputs.to(device)
             labels = labels.to(device)
@@ -92,17 +118,20 @@ def main():
             model.eval()
             
             outputs = model(inputs)
+            outputs, num = delete_pre_test(names, labels, outputs, test_dict)
             loss = criterion(outputs, labels)
             dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())*data_range
+            snum += num
+
+            running_loss += loss.item() * inputs.size(0) * num_classes
+            running_dist += dist * inputs.size(0) * num_classes
             
-            running_loss += loss.item() * inputs.size(0)
-            running_dist += dist * inputs.size(0)
-            
-            output_test(file, names, outputs.cpu().detach().numpy())
-            
-        loss = running_loss / len(dataloaders.dataset)
-        dist = running_dist / len(dataloaders.dataset)
+            output_test(file, html, names, outputs.cpu().detach().numpy())
+        
+        loss = running_loss / snum
+        dist = running_dist / snum
         file.close()
+        html.close()
         
         return loss, dist
             
@@ -129,6 +158,7 @@ def main():
                 running_loss = 0.0
                 running_dist = 0.0
                 # Iterate over data.
+                snum = 0
                 for i, (name, inputs, labels) in tqdm(enumerate(dataloaders[phase])):
                     #if epoch == 0:
                     #    print(name)
@@ -142,8 +172,13 @@ def main():
                     # track history if only in train
                     with torch.set_grad_enabled(phase == 'train'):
                         outputs = model(inputs)
+                        if phase == 'train':
+                            outputs, num = delete_pre_test(name, labels, outputs, train_dict)
+                        else:
+                            outputs, num = delete_pre_test(name, labels, outputs, test_dict)
                         loss = criterion(outputs, labels)
                         dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())*data_range
+                        snum += num
 
                         # backward + optimize only if in training phase
                         if phase == 'train':
@@ -151,11 +186,11 @@ def main():
                             optimizer.step()
 
                     # statistics
-                    running_loss += loss.item() * inputs.size(0)
-                    running_dist += dist * inputs.size(0)
+                    running_loss += loss.item() * inputs.size(0) * num_classes
+                    running_dist += dist * inputs.size(0) * num_classes
 
-                epoch_loss = running_loss / len(dataloaders[phase].dataset)
-                epoch_dist = running_dist / len(dataloaders[phase].dataset)
+                epoch_loss = running_loss / snum
+                epoch_dist = running_dist / snum
 
                 print('{} MSE Loss: {:.4f}, MAE Loss: {:.4f}'.format(phase, epoch_loss, epoch_dist))
                 

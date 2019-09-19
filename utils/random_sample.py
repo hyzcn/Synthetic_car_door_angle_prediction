@@ -16,7 +16,7 @@ def sample_data():
     bl = [x for x in range(-40, 1, 20)]
     br = [x for x in range(0, 60, 20)]
     trunk = [x for x in range(0, 60, 20)] 
-    az = [x for x in range(0, 361, 40)]
+    az = [x for x in range(0, 361, 80)]
     el = [x for x in range(20, 90, 20)]
     dist = [400, 450]
     fl_spl = random.sample(fl, 1)

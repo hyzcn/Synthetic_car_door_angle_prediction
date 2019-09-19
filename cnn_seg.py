@@ -24,6 +24,7 @@ from utils.seg_dict_save import read_seg_dict
 from utils.random_sample import get_samples
 from options.train_seg_options import TrainOptions
 from model.model_seg import initialize_model
+from model.metric import eveluate_iou
 import re
 try:
     from torch.hub import load_state_dict_from_url
@@ -80,33 +81,42 @@ def main():
     val_door_mae = []
     train_pos_mae = []
     val_pos_mae = []
+    train_seg_loss = []
+    val_seg_loss = []
 
     # torch.autograd.set_detect_anomaly(True)
 
     def draw_plot():
         # plot
-        plt.subplot(221)
+        plt.subplot(231)
         plt.xticks(fontsize=8)
         plt.yticks(fontsize=8)
         plt.title("Total MSE loss",fontsize=10)
         plt.plot(x_list,train_total,"x-",label="train loss")
         plt.plot(x_list,val_total,"+-",label="val loss")
         plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
-        plt.subplot(222)
+        plt.subplot(232)
+        plt.xticks(fontsize=8)
+        plt.yticks(fontsize=8)
+        plt.title("Seg CEloss",fontsize=10)
+        plt.plot(x_list,train_seg_loss,"x-",label="train loss")
+        plt.plot(x_list,val_seg_loss,"+-",label="val loss")
+        plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
+        plt.subplot(234)
         plt.xticks(fontsize=8)
         plt.yticks(fontsize=8)
         plt.title("Binary MSE loss",fontsize=10)
         plt.plot(x_list,train_bin,"x-",label="train loss")
         plt.plot(x_list,val_bin,"+-",label="val loss")
         plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
-        plt.subplot(223)
+        plt.subplot(235)
         plt.xticks(fontsize=8)
         plt.yticks(fontsize=8)
         plt.title("Door MSE loss",fontsize=10)
         plt.plot(x_list,train_door,"x-",label="train loss")
         plt.plot(x_list,val_door,"+-",label="val loss")
         plt.legend(bbox_to_anchor=(1.0, 1), loc=1, borderaxespad=0., fontsize=5)
-        plt.subplot(224)
+        plt.subplot(236)
         plt.xticks(fontsize=8)
         plt.yticks(fontsize=8)
         plt.title("Position MSE loss",fontsize=10)
@@ -154,34 +164,15 @@ def main():
 
         return outputs
 
-    def delete_loc_false(labels, outputs):
-        x, y = np.where((labels.cpu()[:,1::3]==0) & (labels.cpu()[:,2::3]==0)==True)
-        y = y*3
-        outputs[x, y] = labels[x, y]
-        outputs[x, y+1] = labels[x, y+1]
-        outputs[x, y+2] = labels[x, y+2]
-        # for i in range(len(labels)):
-        #     for j in range(0,num_classes,3):
-        #         if labels[i][j+1] == 0 and labels[i][j+2] == 0:
-        #             outputs[i,j:j+3] = labels[i,j:j+3]
-
-        return outputs
 
     def output_test(file, html, names, labels, outputs):
         gt_img = np.load(args.test_gt_dir.format(part_name)).item()
         for i in range(len(names)):
             # visualize txt
             type_gt, fl_gt, fr_gt, bl_gt, br_gt, trunk_gt, az_gt, el_gt, dist_gt = names[i].split('_')
-            # content  = "name: {}---gt: [ {}, {}, {}, {}]---predictions: [".format(names[i], bool(labels[i][0]), int(labels[i][1]*data_range), \
-            #                                                                     int(labels[i][2]*224), int(labels[i][3]*224))
-            # content += '{:.2f}, {}, {}, {}'.format(outputs[i][0], int(round(outputs[i][1]*data_range)), int(round(outputs[i][2]*224)), int(round(labels[i][3]*224)))
-            # content += "]\n"
-            # file.write(content)
             if args.add_pre:
                 html.write("{}:gt {}:pred {}\n".format(names[i], [fl_gt, fr_gt, bl_gt, br_gt, trunk_gt], str(np.array(outputs[i,1::4])*data_range)))
-            else:
-                html.write("{}:gt {}:pred {}\n".format(names[i], [fl_gt, fr_gt, bl_gt, br_gt, trunk_gt], str(np.array(outputs[i,::3])*data_range)))
-
+           
         
     def test_model(model, dataloaders, criterion):
         since = time.time()
@@ -189,57 +180,58 @@ def main():
         html = open(args.html_dir.format(model_name, part_name),'w')
         print("Start testing...")
         
-        running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0}
-        for names, inputs, labels in tqdm(dataloaders):
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-            
-            model.eval()
-            
-            outputs = model(inputs)
-            if args.add_pre:
+        running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0, "seg_acc": 0.0}
+        IoU = [0 for i in range(args.seg_classes)]
+        TP = [0 for i in range(args.seg_classes)]
+        FP = [0 for i in range(args.seg_classes)]
+        FN = [0 for i in range(args.seg_classes)]
+        with torch.no_grad():
+            for names, inputs, labels, seglabels in tqdm(dataloaders):
+                inputs = inputs.to(device)
+                labels = labels.to(device)
+                seglabels = seglabels.to(device)
+                
+                model.eval()
+                
+                outputs, segputs = model(inputs)
+                # segmentation
+                segcls = nn.Softmax(1)
+                segputs = segcls(segputs)
+                segputs = torch.argmax(segputs, dim=1)
+                ious, tps, fps, fns = eveluate_iou(seglabels.cpu().numpy(), segputs.cpu().numpy(), args.seg_classes)
+                # print(ious)
+                # print(tps)
+                # print(fps)
+                # print(fns)
+                IoU += ious * inputs.size(0)
+                TP += tps
+                FP += fps
+                FN += fns
+                
+                # regression
                 outputs = delete_pre_test(labels, outputs)
-                loss_bin = criterion(outputs[:,::4], labels[:,::4])
-                loss_door = criterion(outputs[:,1::4], labels[:,1::4])
-                loss_pos = (criterion(outputs[:,2::4], labels[:,2::4])+criterion(outputs[:,3::4], labels[:,3::4]))/2
-                loss = 0.1*loss_bin + 0.4*loss_door + 0.5*loss_pos
                 dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4], labels.cpu().detach().numpy()[:,1::4])
-                dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)+\
-                                        0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*224, labels.cpu().detach().numpy()[:,3::4]*224)
-            else:
-                outputs = delete_loc_false(labels, outputs)
-                loss_door = criterion(outputs[:,::3], labels[:,::3])
-                loss_pos = (criterion(outputs[:,1::3], labels[:,1::3])+criterion(outputs[:,2::3], labels[:,2::3]))/2
-                loss = 0.5*loss_door + 0.5*loss_pos
-                dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,::3], labels.cpu().detach().numpy()[:,::3])
-                dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,1::3]*224, labels.cpu().detach().numpy()[:,1::3]*224)+\
-                                        0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::3]*224, labels.cpu().detach().numpy()[:,2::3]*224)
-            
-            if args.add_pre:
-                running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
-            else:
-                running_loss["bin_mse"] = 0
-            running_loss["door_mse"] += loss_door.item() * inputs.size(0)
-            running_loss["pos_mse"] += loss_pos.item() * inputs.size(0)
-            running_loss["total_mse"] += loss.item() * inputs.size(0)
-            running_loss["door_mae"] += dist_door.item() * inputs.size(0)
-            running_loss["pos_mae"] += dist_pos.item() * inputs.size(0)
-            
-            output_test(file, html, names, labels.cpu().detach().numpy(), outputs.cpu().detach().numpy())
+                dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*480, labels.cpu().detach().numpy()[:,2::4]*480)+\
+                                        0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*640, labels.cpu().detach().numpy()[:,3::4]*640)
+                
+                running_loss["door_mae"] += dist_door.item() * inputs.size(0)
+                running_loss["pos_mae"] += dist_pos.item() * inputs.size(0)
+                
+                output_test(file, html, names, labels.cpu().detach().numpy(), outputs.cpu().detach().numpy())
         
-        loss_bin = running_loss["bin_mse"] / len(dataloaders.dataset)
-        loss_door = running_loss["door_mse"] / len(dataloaders.dataset)
-        loss_pos = running_loss["pos_mse"] / len(dataloaders.dataset)
-        loss = running_loss["total_mse"] / len(dataloaders.dataset)
         dist_door = running_loss["door_mae"] / len(dataloaders.dataset)
         dist_pos = running_loss["pos_mae"] / len(dataloaders.dataset)
+        IoU /= len(dataloaders.dataset)
+        TP /= len(dataloaders.dataset)*480*640
+        FP /= len(dataloaders.dataset)*480*640
+        FN /= len(dataloaders.dataset)*480*640
         file.close()
         html.close()
         
-        return loss, loss_door, loss_pos, loss_bin, dist_door, dist_pos
+        return dist_door, dist_pos, IoU, TP, FP, FN
             
 
-    def train_model(model, dataloaders, criterion, optimizer, num_epochs=25, is_inception=False):
+    def train_model(model, dataloaders, criterion, seg_criterion, optimizer, lam=0.001, num_epochs=25, is_inception=False):
         since = time.time()
 
         val_acc_history = []
@@ -260,11 +252,12 @@ def main():
                 else:
                     model.eval()   # Set model to evaluate mode
 
-                running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0}
+                running_loss = {"total_mse": 0.0, "bin_mse": 0.0, "door_mse":0.0, "pos_mse":0.0, "door_mae": 0.0, "pos_mae": 0.0, "seg_loss": 0.0}
                 # Iterate over data.
-                for i, (name, inputs, labels) in tqdm(enumerate(dataloaders[phase])):
+                for i, (name, inputs, labels, seglabels) in tqdm(enumerate(dataloaders[phase])):
                     inputs = inputs.to(device)
                     labels = labels.to(device)
+                    seglabels = seglabels.to(device)
 
                     # zero the parameter gradients
                     optimizer.zero_grad()
@@ -272,10 +265,15 @@ def main():
                     # forward
                     # track history if only in train
                     with torch.set_grad_enabled(phase == 'train'):
-                        outputs, segs = model(inputs)
-                        # print(segs.shape)
+                        outputs, segputs = model(inputs)
+                        # print(outputs.shape, segputs.shape)
+                        # print(segputs[:,0,0])
 
                         if args.add_pre:
+                            # segmentation
+                            seg_loss = seg_criterion(segputs, seglabels)
+
+                            # regression
                             if phase == "train":
                                 outputs = delete_pre_train(labels, outputs)
                             else:
@@ -284,29 +282,15 @@ def main():
                             loss_door = criterion(outputs[:,1::4], labels[:,1::4])
                             loss_pos = (criterion(outputs[:,2::4], labels[:,2::4])+criterion(outputs[:,3::4], labels[:,3::4]))/2
                             dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,1::4], labels.cpu().detach().numpy()[:,1::4])
-                            dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*224, labels.cpu().detach().numpy()[:,2::4]*224)+\
-                                                    0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*224, labels.cpu().detach().numpy()[:,3::4]*224)
+                            dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::4]*480, labels.cpu().detach().numpy()[:,2::4]*480)+\
+                                                    0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,3::4]*640, labels.cpu().detach().numpy()[:,3::4]*640)
                             if epoch < 10:
                                 loss = 0.1*loss_bin + 0.3*loss_door + 0.6*loss_pos
                             else:
                                 loss = 0.1*loss_bin + 0.6*loss_door + 0.3*loss_pos
-                        else:
-                            outputs = delete_loc_false(labels, outputs)
-                            print(labels)
-                            print(outputs)
-                            input()
-                            loss_door = criterion(outputs[:,::3], labels[:,::3])
-                            loss_pos = (criterion(outputs[:,1::3], labels[:,1::3])+criterion(outputs[:,2::3], labels[:,2::3]))/2
-                            dist_door = mean_absolute_error(outputs.cpu().detach().numpy()[:,::3], labels.cpu().detach().numpy()[:,::3])
-                            dist_pos = 0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,1::3]*224, labels.cpu().detach().numpy()[:,1::3]*224)+\
-                                                    0.5*mean_absolute_error(outputs.cpu().detach().numpy()[:,2::3]*224, labels.cpu().detach().numpy()[:,2::3]*224)
-                            if epoch < 10:
-                                loss = 0.4*loss_door + 0.6*loss_pos
-                            else:
-                                loss = 0.6*loss_door + 0.4*loss_pos
-                        
+                            
+                            loss = lam*seg_loss + (1-lam)*loss
 
-                        # print("--step {}: total loss: {}, loss_bin: {}, loss_door: {}, loss_pos: {}".format(i, loss, loss_bin, loss_door, loss_pos))
                         # backward + optimize only if in training phase
                         if phase == 'train':
                             loss.backward()
@@ -315,13 +299,12 @@ def main():
                     # statistics
                     if args.add_pre:
                         running_loss["bin_mse"] += loss_bin.item() * inputs.size(0)
-                    else:
-                        running_loss["bin_mse"] = 0
                     running_loss["door_mse"] += loss_door.item() * inputs.size(0)
                     running_loss["pos_mse"] += loss_pos.item() * inputs.size(0)
                     running_loss["total_mse"] += loss.item() * inputs.size(0)
                     running_loss["door_mae"] += dist_door * inputs.size(0)
                     running_loss["pos_mae"] += dist_pos * inputs.size(0)
+                    running_loss["seg_loss"] += seg_loss * inputs.size(0)
 
                 epoch_loss_bin = running_loss["bin_mse"] / len(dataloaders[phase].dataset)
                 epoch_loss_door = running_loss["door_mse"] / len(dataloaders[phase].dataset)
@@ -329,9 +312,10 @@ def main():
                 epoch_loss = running_loss["total_mse"] / len(dataloaders[phase].dataset)
                 epoch_dist_door = running_loss["door_mae"] / len(dataloaders[phase].dataset)
                 epoch_dist_pos = running_loss["pos_mae"] / len(dataloaders[phase].dataset)
+                epoch_seg_loss = running_loss["seg_loss"] / len(dataloaders[phase].dataset)
 
-                print('{} Total loss: {:.4f}, Bin loss: {:.4f}, Door loss: {:.4f}, Position loss: {:.4f}, Door dist: {:.4f}, Position dist: {:.4f}'.format(phase, \
-                    epoch_loss, epoch_loss_bin, epoch_loss_door, epoch_loss_pos, epoch_dist_door*abs(data_range), epoch_dist_pos))
+                print('{} Total loss: {:.4f}, Seg loss: {:.4f}, Bin loss: {:.4f}, Door loss: {:.4f}, Position loss: {:.4f}, Door dist: {:.4f}, Position dist: {:.4f}'.format(phase, \
+                    epoch_loss, epoch_seg_loss, epoch_loss_bin, epoch_loss_door, epoch_loss_pos, epoch_dist_door*abs(data_range), epoch_dist_pos))
                 
                 # plot
                 if phase == 'train':
@@ -341,6 +325,7 @@ def main():
                     train_pos.append(epoch_loss_pos)
                     train_door_mae.append(epoch_dist_door*60)
                     train_pos_mae.append(epoch_dist_pos)
+                    train_seg_loss.append(epoch_seg_loss)
                 else:
                     val_total.append(epoch_loss)
                     val_bin.append(epoch_loss_bin)
@@ -348,6 +333,7 @@ def main():
                     val_pos.append(epoch_loss_pos)
                     val_door_mae.append(epoch_dist_door*60)
                     val_pos_mae.append(epoch_dist_pos)
+                    val_seg_loss.append(epoch_seg_loss)
 
                 # deep copy the model
                 if phase == 'val' and (epoch == 0 or epoch_dist_door<best_loss):
@@ -366,11 +352,12 @@ def main():
         return model
         
     class myDataset(torch.utils.data.Dataset):
-        def __init__(self, dataSource, gtSource, mode, cropSource=None, cropGt=None, test_id=None):
+        def __init__(self, dataSource, gtSource, segSource, mode, cropSource=None, cropGt=None, test_id=None):
             # Just normalization for validation
             self.mode = mode
             self.dir_img = dataSource
             self.gt_img = np.load(gtSource).item()
+            self.seg_dir = segSource
             if cropSource:
                 self.dir_crop = cropSource
                 self.gt_crop = np.load(cropGt).item()
@@ -384,7 +371,8 @@ def main():
             if self.names[index][-3:] == "png":
                 return self.names[index], self.load_image(self.dir_crop+self.names[index]), self.load_gt(self.gt_crop, self.names[index][:-4])
             else:
-                return self.names[index], self.load_image(self.dir_img+self.names[index]+".png"), self.load_gt(self.gt_img, self.names[index])
+                return self.names[index], self.load_image(self.dir_img+self.names[index]+".png"), \
+                self.load_gt(self.gt_img, self.names[index]), self.load_seg_gt(self.seg_dir, self.names[index])
             
         def __len__(self):
             return len(self.names)
@@ -407,13 +395,6 @@ def main():
                 for file in os.listdir(dir):
                     if file[-3:] == "png":
                         name_data.append(file[:-4])
-            elif mode == 'test_baseline':
-                n = 0
-                for file in os.listdir(dir):
-                    if file[-3:] == "png":
-                        if n in test_id:
-                            name_data.append(file[:-4])
-                    n += 1
             elif mode == 'test_texture':
                 name_data = open(args.test_name_dir, 'r').read().splitlines() 
 
@@ -425,7 +406,7 @@ def main():
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
                 ])
             img = cv2.imread(dir)
-            img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
+            # img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_CUBIC)
             return data_transforms(img)
 
         def load_gt(self, dic, name):
@@ -450,12 +431,11 @@ def main():
                                             (bl_bin and bool(bl_x) and bool(bl_y)), abs(int(bl))/data_range, bl_x, bl_y, \
                                             (br_bin and bool(br_x) and bool(br_y)), abs(int(br))/data_range, br_x, br_y, \
                                             (trunk_bin and bool(trunk_x) and bool(trunk_y)), abs(int(trunk))/data_range, trunk_x, trunk_y])
-                else:
-                    return torch.FloatTensor([abs(int(fl))/data_range, fl_x, fl_y, \
-                                            abs(int(fr))/data_range, fr_x, fr_y, \
-                                            abs(int(bl))/data_range, bl_x, bl_y, \
-                                            abs(int(br))/data_range, br_x, br_y, \
-                                            abs(int(trunk))/data_range, trunk_x, trunk_y])
+
+        def load_seg_gt(self, dir, name):
+            seg_gt = np.load(dir+name+'.npy')
+            # seg_gt = cv2.resize(seg_gt, (224, 224), interpolation=cv2.INTER_CUBIC)
+            return torch.LongTensor(seg_gt)
 
 
     # Detect if we have a GPU available
@@ -463,6 +443,7 @@ def main():
 
     # Setup the loss fxn
     criterion = nn.MSELoss()
+    seg_criterion = nn.CrossEntropyLoss()
 
     if args.command == "train":
         # Initialize the model for this run
@@ -476,11 +457,14 @@ def main():
         print("Initializing Datasets and Dataloaders...")
 
         # Create training and validation datasets
-        trainsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), cropSource=crop_dir, cropGt=crop_gt_dir, mode='train')
+        trainsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), cropSource=crop_dir, \
+                            segSource=args.train_seg_gt_dir, cropGt=crop_gt_dir, mode='train')
         if args.test_texture:
-            testsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), mode='test_texture')
+            testsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), \
+                                segSource=args.train_seg_gt_dir, mode='test_texture')
         else:
-            testsets = myDataset(dataSource=args.test_dir.format(part_name), gtSource=args.test_gt_dir.format(part_name), mode='test')
+            testsets = myDataset(dataSource=args.test_dir.format(part_name), gtSource=args.test_gt_dir.format(part_name), \
+                                segSource=args.test_seg_gt_dir, mode='test')
 
         image_datasets = {'train': trainsets, 'val': testsets}
 
@@ -491,11 +475,6 @@ def main():
         # Send the model to GPU
         model_ft = model_ft.to(device)
 
-        # Gather the parameters to be optimized/updated in this run. If we are
-        #  finetuning we will be updating all parameters. However, if we are
-        #  doing feature extract method, we will only update the parameters
-        #  that we have just initialized, i.e. the parameters with requires_grad
-        #  is True.
         params_to_update = model_ft.parameters()
         # print("Params to learn:")
         if args.feature_extract:
@@ -515,12 +494,13 @@ def main():
 
 
         # Train and evaluate
-        model_ft = train_model(model_ft, dataloaders_dict, criterion, optimizer_ft, num_epochs=args.num_epochs, is_inception=(model_name=="inception"))
+        model_ft = train_model(model_ft, dataloaders_dict, criterion, seg_criterion, optimizer_ft, \
+                                lam=args.lam, num_epochs=args.num_epochs, is_inception=(model_name=="inception"))
 
     # Test
     # Load model
     if args.command == "test":
-        model_ft, input_size = initialize_model(model_name, num_classes, args.feature_extract, use_pretrained=False)
+        model_ft, input_size = initialize_model(model_name, num_classes, args.seg_classes, args.feature_extract, use_pretrained=False)
         model_ft.load_state_dict(torch.load(args.model_dir.format(model_name, part_name)))
         model_ft = nn.DataParallel(model_ft)
         if isinstance(model_ft,torch.nn.DataParallel):
@@ -529,25 +509,23 @@ def main():
 
         model_ft.eval()
 
-        if args.test_baseline:
-            # original testset
-            random_list = range(args.num_images)
-            test_id = random.sample(random_list, 9720)
-            testsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), mode='test_baseline', test_id=test_id)
-        elif args.test_texture:
-            testsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), mode='test_texture')
+        if args.test_texture:
+            testsets = myDataset(dataSource=args.train_dir, gtSource=args.train_gt_dir.format(part_name), \
+                                segSource=args.train_seg_gt_dir, mode='test_texture')
         else:
-            testsets = myDataset(dataSource=args.test_dir.format(part_name), gtSource=args.test_gt_dir.format(part_name), mode='test')
+            testsets = myDataset(dataSource=args.test_dir.format(part_name), gtSource=args.test_gt_dir.format(part_name), \
+                                segSource=args.test_seg_gt_dir, mode='test')
 
     # Build testset
     testloader_dict = Data.DataLoader(testsets, batch_size=args.batch_size, shuffle=True, num_workers=8)
-    test_loss, test_door, test_pos, test_bin, dist_door, dist_pos = test_model(model_ft, testloader_dict, criterion)
-    print("Total test mse: ", test_loss)
-    print("Test binary mse: ", test_bin)
-    print("Test door mse: ", test_door)
-    print("Test position mse: ", test_pos)
+    dist_door, dist_pos, IoU, TP, FP, FN= test_model(model_ft, testloader_dict, criterion)
     print("Test door mae: ", dist_door*abs(data_range))
     print("Test position mae: ", dist_pos)
+    print("Test mIoU: ", IoU.mean())
+    print("Test IoU: ", IoU)
+    print("Test TP: ", TP)
+    print("Test FP: ", FP)
+    print("Test FN: ", FN)
 
 if __name__=="__main__":
     main()

@@ -4,10 +4,20 @@ import cv2
 from vis_dis import *
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import argparse
+import os.path as osp
+import ast
+
+parser = argparse.ArgumentParser(description="seg images => gt.")
+parser.add_argument("--seg-dir", type=str)
+parser.add_argument("--save-dir", type=str)
+args = parser.parse_args()
 
 # Configurations
-seg_dir = '../datasets/train/preset_car_seg/'
-save_dir = '../segsets/train/preset_car_seg/'
+seg_dir = args.seg_dir
+save_dir = args.save_dir
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
 
 def get_locat_np(seg_img):
     color_dict = {'sky':[245, 10, 255], 'floor':[0, 255, 127], 'fl':[0,0,0], 

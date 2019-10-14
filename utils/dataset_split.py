@@ -6,8 +6,8 @@ import random
 from random_sample import get_samples, sample_data
 
 train_params = {
-    # "mesh_id":['Hatchback', 'Hybrid', 'Sedan2Door', 'Sedan4Door', 'Suv'],
-    "mesh_id":['suv', 'hybrid', 'hatchback', 'sedan2door', 'sedan4door'],
+    "mesh_id":['Hatchback', 'Hybrid', 'Sedan2Door', 'Sedan4Door', 'Suv'],
+    # "mesh_id":['suv', 'hybrid', 'hatchback', 'sedan2door', 'sedan4door'],
     "fl":[x for x in range(-40, 1, 20)],
     "fr":[x for x in range(0, 41, 20)],
     "bl":[x for x in range(-40, 1, 20)],
@@ -87,10 +87,10 @@ def norm_split_generator(part_name, train_num, test_num, train_save_dir, test_sa
 
 
 if __name__ == '__main__':
-    # train_save_dir = "../ImageSets/preset_all_train_texture_sample.txt"
-    # test_save_dir = "../ImageSets/preset_all_test_texture_sample.txt"
-    train_save_dir = "../ImageSets/preset_all_train_final_norm.txt"
-    test_save_dir = "../ImageSets/preset_all_test_final_norm.txt"
+    # train_save_dir = "../ImageSets/preset_all_train_final_sample.txt"
+    # test_save_dir = "../ImageSets/preset_all_test_final_sample.txt"
+    train_save_dir = "../ImageSets/preset_all_train_texture_norm.txt"
+    test_save_dir = "../ImageSets/preset_all_test_texture_norm.txt"
     # sample_split_generator('all', 600, 9720, train_save_dir, test_save_dir)
     norm_split_generator('all', 40000, 8600, train_save_dir, test_save_dir)
 

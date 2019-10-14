@@ -24,7 +24,7 @@ from utils.seg_dict_save import read_seg_dict
 from utils.random_sample import get_samples
 from options.train_seg_options import TrainOptions
 from model.model_seg import initialize_model
-from model.metric import eveluate_iou
+from model.metric import eveluate_iou, vis_seg
 import re
 try:
     from torch.hub import load_state_dict_from_url
@@ -199,14 +199,14 @@ def main():
                 segputs = segcls(segputs)
                 segputs = torch.argmax(segputs, dim=1)
                 ious, tps, fps, fns = eveluate_iou(seglabels.cpu().numpy(), segputs.cpu().numpy(), args.seg_classes)
-                # print(ious)
-                # print(tps)
-                # print(fps)
-                # print(fns)
+                print(names[0])
+                print(outputs[0][1::4]*60)
+                vis_seg(segputs[0].cpu().numpy(), args.seg_classes)
+                input()
                 IoU += ious * inputs.size(0)
-                TP += tps
-                FP += fps
-                FN += fns
+                TP += tps * inputs.size(0)
+                FP += fps * inputs.size(0)
+                FN += fns * inputs.size(0)
                 
                 # regression
                 outputs = delete_pre_test(labels, outputs)
@@ -222,9 +222,9 @@ def main():
         dist_door = running_loss["door_mae"] / len(dataloaders.dataset)
         dist_pos = running_loss["pos_mae"] / len(dataloaders.dataset)
         IoU /= len(dataloaders.dataset)
-        TP /= len(dataloaders.dataset)*480*640
-        FP /= len(dataloaders.dataset)*480*640
-        FN /= len(dataloaders.dataset)*480*640
+        TP /= len(dataloaders.dataset)
+        FP /= len(dataloaders.dataset)
+        FN /= len(dataloaders.dataset)
         file.close()
         html.close()
         
@@ -448,6 +448,7 @@ def main():
     if args.command == "train":
         # Initialize the model for this run
         model_ft, input_size = initialize_model(model_name, num_classes, args.seg_classes, args.feature_extract, use_pretrained=True)
+        
         model_ft = nn.DataParallel(model_ft)
 
 
@@ -523,9 +524,9 @@ def main():
     print("Test position mae: ", dist_pos)
     print("Test mIoU: ", IoU.mean())
     print("Test IoU: ", IoU)
-    print("Test TP: ", TP)
-    print("Test FP: ", FP)
-    print("Test FN: ", FN)
+    # print("Test TP: ", TP)
+    # print("Test FP: ", FP)
+    # print("Test FN: ", FN)
 
 if __name__=="__main__":
     main()

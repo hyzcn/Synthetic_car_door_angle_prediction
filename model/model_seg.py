@@ -234,19 +234,13 @@ class ResNet_Seg(nn.Module):
         x = self.layer4(x)
         pool5 = x # 1/32
 
-        # regression
-        x = self.avgpool(x)
-        x = torch.flatten(x, 1)
-        x = self.fc(x)
-
         # segmentation
         h = self.score_pool5(pool5)
         # print("pool5: ", h.shape)
         h = self.upscore2(h)
         upscore2 = h  # 1/16
         # print("2xupsample pool5: ", upscore2.shape)
-        h = self.score_pool4(pool4)  # XXX: scaling to train at once
-        # h = h[:, :, 5:5 + upscore2.size()[2], 5:5 + upscore2.size()[3]]
+        h = self.score_pool4(pool4) 
         score_pool4c = h  # 1/16
         # print("pool4: ", score_pool4c.shape)
 
@@ -255,17 +249,19 @@ class ResNet_Seg(nn.Module):
         upscore_pool4 = h  # 1/8
         # print("add 2upsample: ", upscore_pool4.shape)
 
-        h = self.score_pool3(pool3)  # XXX: scaling to train at once
-        # h = h[:, :,
-        #       9:9 + upscore_pool4.size()[2],
-        #       9:9 + upscore_pool4.size()[3]]
-        # print("pool3: ", h.shape)
+        h = self.score_pool3(pool3)  
         score_pool3c = h  # 1/8
 
         h = upscore_pool4 + score_pool3c  # 1/8
 
         h = self.upscore8(h).contiguous()
-        # h = h[:, :, 31:31 + x.size()[2], 31:31 + x.size()[3]].contiguous()
+
+        # regression
+        # x = torch.cat((x, h), 0) # add segmentation result to original feature map
+        # print(x.shape)
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc(x)
 
         return x, h
 

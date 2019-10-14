@@ -18,7 +18,7 @@ import csv
 import re
 import math
 from utils.seg_dict_save import *
-from model import *
+from model.model_seg import initialize_model
 
 
 ############### Configurations ###############
@@ -38,18 +38,19 @@ num_classes = 20
 feature_extract = False
 
 # Dataset directory
-test_dir = "datasets/all_test/preset_test_texture/".format(part_name)
-seg_dir = 'datasets/preset_test_{}_seg/'.format(part_name)
+test_dir = "datasets/all_test/shapenet_test_all/".format(part_name)
+seg_dir = 'datasets/shapenet_test_all_seg/'.format(part_name)
 seg_dict_dir = 'seg_dict/preset_test_{}_seg.npy'.format(part_name)
 vis_dir = "vis_dis/vis_dis_fl.npy"
 
 # Model settings 
-param_dir = "params/crop_loc_pre_texture/{}_ft_{}_0.3_0.6_64.pkl".format(model_name, part_name)
+param_dir = "params/loc_pre_seg_0.5/resnet_ft_all_0.3_0.6_64.pkl".format(model_name, part_name)
+# param_dir = "params/resnet_ft_all_floor_norm_new.pkl"
 pred_dir = 'htmls/sigmoid/{}_ft_{}_same.txt'.format(model_name, part_name)
-gt_dir = "gt_dict/preset_test_coco_all_all_gt.npy"
+gt_dir = "gt_dict/shapenet_test_all_all_gt.npy"
 
 # Save settings
-cam_dir = "cam_test/crop_loc_pre_texture/preset_test_texture/".format(model_name, part_name)
+cam_dir = "cam_test/loc_pre_seg_0.5/shapenet_test_all_4/".format(model_name, part_name)
 over_save_dir = 'overlaps/sigmoid/{}_ft_{}_same.csv'.format(model_name, part_name)
 focus_dir = 'focus_names/{}_ft_{}_same/focus.txt'.format(model_name, part_name)
 unfocus_dir = 'focus_names/{}_ft_{}_same/unfocus.txt'.format(model_name, part_name)
@@ -105,7 +106,8 @@ def cal_ovlp(mask, heat):
 # net = models.resnet18(pretrained=True)
 
 # modified
-net, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=False)
+# net, input_size = initialize_model(model_name, num_classes, feature_extract, use_pretrained=False)
+net, input_size = initialize_model(model_name, num_classes, 9, feature_extract, use_pretrained=False)
 net.load_state_dict(torch.load(param_dir))
 
 if model_name == 'resnet':
@@ -154,7 +156,8 @@ with open(over_save_dir,"w") as csvfile:
 
             # get the softmax weight
             params = list(net.parameters())
-            weight_softmax = np.squeeze(params[-2].data.numpy())
+            # weight_softmax = np.squeeze(params[-2].data.numpy())
+            weight_softmax = np.squeeze(params[-11].data.numpy())
             # weight_softmax = np.squeeze(params[-2].data.numpy()).reshape(1, 512)
 
             def returnCAM(feature_conv, weight_softmax, class_idx):
@@ -189,15 +192,16 @@ with open(over_save_dir,"w") as csvfile:
             img_tensor = preprocess(img_pil)
             img_variable = Variable(img_tensor.unsqueeze(0))
             logit = net(img_variable)
+            # logit, _ = net(img_variable)
 
-            h_x = F.softmax(logit, dim=1).data.squeeze()
-            probs, idx = h_x.sort(0, True)
-            probs = probs.numpy()
-            idx = idx.numpy()
+            # h_x = F.softmax(logit, dim=1).data.squeeze()
+            # probs, idx = h_x.sort(0, True)
+            # probs = probs.numpy()
+            # idx = idx.numpy()
             # bar.set_description("idx: {}, idx[0]: {}".format(idx, idx[0]))
 
             # generate class activation mapping for the top1 prediction
-            CAMs = returnCAM(features_blobs[0], weight_softmax, [12])
+            CAMs = returnCAM(features_blobs[0], weight_softmax, [4])
 
             # render the CAM and output
             img = cv2.imread(test_dir+file)
@@ -206,10 +210,10 @@ with open(over_save_dir,"w") as csvfile:
 
             if generate_cam:
                 result = heatmap * 0.3 + img * 0.5
-                # type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
-                # fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  gt_dict[file[:-4]]
-                # if (br_bin and bool(br_x) and bool(br_y)) and az == '160' and el == '80':
-                cv2.imwrite(cam_dir+file, result)
+                type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)
+                fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  gt_dict[file[:-4]]
+                if (br_bin and bool(br_x) and bool(br_y)) and az == '160' and el == '80':
+                    cv2.imwrite(cam_dir+file, result)
 
             if cal_overlap:
                 type, fl, fr, bl, br, trunk, az, el, dist, _ = re.split(r'[_.]', file)

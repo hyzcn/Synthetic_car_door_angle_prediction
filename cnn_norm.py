@@ -85,19 +85,19 @@ def main():
         num = len(names)*5
         for i in range(len(names)):
             fl_bin, fl_x, fl_y, fr_bin, fr_x, fr_y, bl_bin, bl_x, bl_y, br_bin, br_x, br_y, trunk_bin, trunk_x, trunk_y =  ndict[names[i].lower()]
-            if fl_bin and bool(fl_x) and bool(fl_y):
+            if not (fl_bin and bool(fl_x) and bool(fl_y)):
                 outputs[i][0] = labels[i][0]
                 num -= 1
-            if fr_bin and bool(fr_x) and bool(fr_y):
+            if not (fr_bin and bool(fr_x) and bool(fr_y)):
                 outputs[i][1] = labels[i][1]
                 num -= 1
-            if bl_bin and bool(bl_x) and bool(bl_y):
+            if not (bl_bin and bool(bl_x) and bool(bl_y)):
                 outputs[i][2] = labels[i][2]
                 num -= 1
-            if br_bin and bool(br_x) and bool(br_y):
+            if not (br_bin and bool(br_x) and bool(br_y)):
                 outputs[i][3] = labels[i][3]
                 num -= 1
-            if trunk_bin and bool(trunk_x) and bool(trunk_y):
+            if not (trunk_bin and bool(trunk_x) and bool(trunk_y)):
                 outputs[i][4] = labels[i][4]
                 num -= 1
 
@@ -118,13 +118,16 @@ def main():
             model.eval()
             
             outputs = model(inputs)
-            outputs, num = delete_pre_test(names, labels, outputs, test_dict)
-            loss = criterion(outputs, labels)
-            dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())*data_range
+            if args.test_spatial:
+                outputs, num = delete_pre_test(names, labels, outputs, test_dict)
+            else:
+                outputs, num = delete_pre_test(names, labels, outputs, train_dict)
+            loss = criterion(outputs, labels) * inputs.size(0) * num_classes / num
+            dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())*data_range* inputs.size(0)* num_classes / num
             snum += num
 
-            running_loss += loss.item() * inputs.size(0) * num_classes
-            running_dist += dist * inputs.size(0) * num_classes
+            running_loss += loss.item() * num
+            running_dist += dist * num
             
             output_test(file, html, names, outputs.cpu().detach().numpy())
         
@@ -175,9 +178,12 @@ def main():
                         if phase == 'train':
                             outputs, num = delete_pre_test(name, labels, outputs, train_dict)
                         else:
-                            outputs, num = delete_pre_test(name, labels, outputs, test_dict)
-                        loss = criterion(outputs, labels)
-                        dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())*data_range
+                            if args.test_spatial:
+                                outputs, num = delete_pre_test(name, labels, outputs, test_dict)
+                            else:
+                                outputs, num = delete_pre_test(name, labels, outputs, train_dict)
+                        loss = criterion(outputs, labels) * inputs.size(0) * num_classes / num
+                        dist = mean_absolute_error(outputs.cpu().detach().numpy(), labels.cpu().detach().numpy())*data_range* inputs.size(0)* num_classes / num
                         snum += num
 
                         # backward + optimize only if in training phase
@@ -186,8 +192,8 @@ def main():
                             optimizer.step()
 
                     # statistics
-                    running_loss += loss.item() * inputs.size(0) * num_classes
-                    running_dist += dist * inputs.size(0) * num_classes
+                    running_loss += loss.item() * num
+                    running_dist += dist * num
 
                 epoch_loss = running_loss / snum
                 epoch_dist = running_dist / snum
@@ -319,11 +325,6 @@ def main():
         # Send the model to GPU
         model_ft = model_ft.to(device)
 
-        # Gather the parameters to be optimized/updated in this run. If we are
-        #  finetuning we will be updating all parameters. However, if we are
-        #  doing feature extract method, we will only update the parameters
-        #  that we have just initialized, i.e. the parameters with requires_grad
-        #  is True.
         params_to_update = model_ft.parameters()
         # print("Params to learn:")
         if args.feature_extract:

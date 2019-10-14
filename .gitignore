@@ -6,5 +6,11 @@ seg_dict/
 gt_dict/
 seg_vis/
 segsets/
+htmls/
+focus_names/
+outputs/
+overlaps/
+plots/
+vis_dis/
 
 .pkl
